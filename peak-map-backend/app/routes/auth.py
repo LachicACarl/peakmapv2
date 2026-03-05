@@ -92,6 +92,23 @@ def _login_local_fallback(payload, db: Session, supabase_error: str | None = Non
     }
 
 
+def _is_supabase_connectivity_error(error_text: str) -> bool:
+    connectivity_markers = [
+        "connection",
+        "connect",
+        "network",
+        "timed out",
+        "timeout",
+        "name resolution",
+        "temporary failure",
+        "service unavailable",
+        "502",
+        "503",
+        "504",
+    ]
+    return any(marker in error_text for marker in connectivity_markers)
+
+
 class AuthPayload(BaseModel):
     email: str  # Accept any string (email, phone, or username)
     password: str
@@ -163,9 +180,23 @@ def register(payload: RegisterPayload, db: Session = Depends(get_db)):
             "user_type": payload.user_type,
             "auth_method": "supabase",
         }
+    except HTTPException:
+        raise
     except Exception as exc:
-        print(f"Registration error: {exc}")
-        return _register_local_fallback(payload, db, str(exc))
+        error_text = str(exc)
+        error_text_lower = error_text.lower()
+        print(f"Registration error: {error_text}")
+
+        if "rate limit" in error_text_lower:
+            raise HTTPException(status_code=429, detail="Supabase rate limit exceeded")
+
+        if "already registered" in error_text_lower or "already exists" in error_text_lower:
+            raise HTTPException(status_code=400, detail="Account already exists")
+
+        if _is_supabase_connectivity_error(error_text_lower):
+            return _register_local_fallback(payload, db, error_text)
+
+        raise HTTPException(status_code=400, detail=f"Supabase registration failed: {error_text}")
 
 
 @router.post("/login")
@@ -195,9 +226,26 @@ def login(payload: AuthPayload, db: Session = Depends(get_db)):
             "user_type": payload.user_type or "passenger",
             "auth_method": "supabase",
         }
+    except HTTPException:
+        raise
     except Exception as exc:
-        print(f"Login error: {exc}")
-        return _login_local_fallback(payload, db, str(exc))
+        error_text = str(exc)
+        error_text_lower = error_text.lower()
+        print(f"Login error: {error_text}")
+
+        if "invalid login credentials" in error_text_lower or "invalid credentials" in error_text_lower:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+
+        if "email not confirmed" in error_text_lower:
+            raise HTTPException(status_code=403, detail="Email not confirmed")
+
+        if "rate limit" in error_text_lower:
+            raise HTTPException(status_code=429, detail="Supabase rate limit exceeded")
+
+        if _is_supabase_connectivity_error(error_text_lower):
+            return _login_local_fallback(payload, db, error_text)
+
+        raise HTTPException(status_code=400, detail=f"Supabase login failed: {error_text}")
 
 @router.post("/forgot-password")
 def forgot_password(payload: ForgotPasswordPayload):

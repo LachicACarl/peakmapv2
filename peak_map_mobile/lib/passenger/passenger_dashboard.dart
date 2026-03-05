@@ -134,7 +134,7 @@ class _PassengerDashboardState extends State<PassengerDashboard> {
                     color: Colors.grey[300],
                     image: const DecorationImage(
                       image: NetworkImage(
-                        'https://api.mapbox.com/styles/v1/mapbox/streets-v11/static/35.5018,33.8886,8,0/400x250?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw',
+                        'https://api.mapbox.com/styles/v1/mapbox/streets-v11/static/35.5018,33.8886,8,0/400x250?access_token=YOUR_MAPBOX_ACCESS_TOKEN',
                       ),
                       fit: BoxFit.cover,
                     ),

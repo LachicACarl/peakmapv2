@@ -15,8 +15,8 @@ except ImportError:
 
 load_dotenv()
 
-SUPABASE_URL = os.getenv("SUPABASE_URL", "https://grtesehqlvhfmlchibnv.supabase.co")
-SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdydGVzZWhxbHZoZm1sY2hpYm52Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc0MjMzNzksImV4cCI6MjA4Mjk5OTM3OX0.XCd0oWlypyPgr0pDT9Z-xieXeyQq3C1THpdX7nHrKLo")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 
 _client: Optional[Client] = None
 
@@ -75,4 +75,4 @@ def get_supabase_client():
 
 
 def is_supabase_available() -> bool:
-    return SUPABASE_AVAILABLE
+    return SUPABASE_AVAILABLE and bool(SUPABASE_URL and SUPABASE_ANON_KEY)

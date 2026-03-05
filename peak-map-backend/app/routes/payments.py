@@ -376,46 +376,37 @@ def load_balance(payload: BalanceLoadPayload, db: Session = Depends(get_db)):
         raise
     except Exception as e:
         print(f"❌ Balance load error: {e}")
-        # Return demo success response
-        return {
-            "success": True,
-            "message": f"Balance of ₱{payload.amount} loaded (demo mode)",
-            "transaction_id": int(payload.amount) * 100,
-            "user_id": payload.user_id,
-            "amount": payload.amount,
-            "card_id": payload.card_id,
-            "timestamp": datetime.utcnow().isoformat(),
-        }
+        raise HTTPException(status_code=500, detail=f"Balance load failed: {str(e)}")
 
 
 @router.post("/balance/check")
 def check_balance_nfc(payload: BalanceCheckPayload, db: Session = Depends(get_db)):
     """Check balance via NFC card scan"""
     try:
-        # Get total loaded balance for user
-        total_balance = db.query(Payment).filter(
-            Payment.method == "admin_nfc",
+        # Get all paid NFC transactions for this user only
+        payments = db.query(Payment).filter(
+            Payment.user_id == payload.user_id,
             Payment.status == "paid",
         ).all()
-        
-        total = sum(p.amount for p in total_balance)
-        
+
+        # Calculate balance: loads (admin_nfc) minus deductions (bus_fare_nfc)
+        total_balance = 0.0
+        for payment in payments:
+            if payment.method == "admin_nfc":
+                total_balance += payment.amount
+            elif payment.method == "bus_fare_nfc":
+                total_balance -= payment.amount
+
         return {
             "success": True,
             "user_id": payload.user_id,
             "card_id": payload.card_id,
-            "balance": float(total),
-            "message": f"User {payload.user_id} has a balance of ₱{total}",
+            "balance": float(total_balance),
+            "message": f"User {payload.user_id} has a balance of ₱{total_balance}",
         }
     except Exception as e:
         print(f"NFC balance check error: {e}")
-        return {
-            "success": True,
-            "user_id": payload.user_id,
-            "card_id": payload.card_id,
-            "balance": 0.0,
-            "message": "Unable to retrieve balance",
-        }
+        raise HTTPException(status_code=500, detail=f"Balance check failed: {str(e)}")
 
 
 @router.get("/balance/{user_id}")
@@ -427,7 +418,7 @@ def get_user_balance(user_id: str, db: Session = Depends(get_db)):
             Payment.user_id == user_id,
             Payment.status == "paid",
         ).all()
-        
+
         # Calculate balance: loads (admin_nfc) minus deductions (bus_fare_nfc)
         total_balance = 0.0
         for p in payments:
@@ -435,7 +426,7 @@ def get_user_balance(user_id: str, db: Session = Depends(get_db)):
                 total_balance += p.amount  # Add loaded amount
             elif p.method == "bus_fare_nfc":
                 total_balance -= p.amount  # Subtract fare deduction
-        
+
         return {
             "success": True,
             "user_id": user_id,
@@ -443,11 +434,7 @@ def get_user_balance(user_id: str, db: Session = Depends(get_db)):
         }
     except Exception as e:
         print(f"Balance check error: {e}")
-        return {
-            "success": True,
-            "user_id": user_id,
-            "balance": 0.0,
-        }
+        raise HTTPException(status_code=500, detail=f"Balance retrieval failed: {str(e)}")
 
 
 @router.get("/transactions/admin")

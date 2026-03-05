@@ -280,6 +280,23 @@ def seed_payments(rides):
 
 def main():
     """Main seeding function"""
+    # Safety check: warn about data loss
+    safety_mode = os.getenv("ENABLE_SEEDING") != "true"
+    
+    if safety_mode:
+        print("=" * 60)
+        print("⚠️  SEED DATA SAFETY CHECK")
+        print("=" * 60)
+        print("\nThis script will DELETE ALL existing database data:")
+        print("  ❌ All users (drivers & passengers)")
+        print("  ❌ All rides")
+        print("  ❌ All payments")
+        print("  ❌ All GPS logs")
+        print("\nTo enable seeding, run:")
+        print("  ENABLE_SEEDING=true python seed_data.py")
+        print("\nSeeding is for TESTING ONLY.")
+        return
+    
     print("=" * 60)
     print("PeakMap Database Seeding Script")
     print("=" * 60)

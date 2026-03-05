@@ -140,3 +140,19 @@ WHERE NOT EXISTS (SELECT 1 FROM stations WHERE name = 'Buendia Station');
 INSERT INTO fares (base_fare, per_km_rate, per_minute_rate, minimum_fare, active)
 SELECT 50.00, 15.00, 2.50, 50.00, TRUE
 WHERE NOT EXISTS (SELECT 1 FROM fares WHERE base_fare = 50.00);
+
+-- 9. Security Baseline (RLS)
+-- Enable RLS on all public tables that may be exposed through PostgREST.
+-- NOTE: This intentionally includes optional tables that may exist in production
+-- even if they are not created in this bootstrap script.
+ALTER TABLE IF EXISTS public.users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.drivers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.passengers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.stations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.rides ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.gps_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.fares ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.admins ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.buses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.bus_updates ENABLE ROW LEVEL SECURITY;
