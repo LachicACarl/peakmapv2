@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PEAK MAP - WebSocket Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 3px solid #355872;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #34495e;
+            margin-top: 0;
+        }
+        button {
+            background: #355872;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #7AAACE;
+        }
+        button.disconnect {
+            background: #e74c3c;
+        }
+        button.disconnect:hover {
+            background: #c0392b;
+        }
+        button.send {
+            background: #7AAACE;
+        }
+        button.send:hover {
+            background: #9CD5FF;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+        .status.connected {
+            background: #d5f4e6;
+            color: #7AAACE;
+        }
+        .status.disconnected {
+            background: #fadbd8;
+            color: #e74c3c;
+        }
+        #log {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 5px;
+            height: 400px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        input {
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            margin: 5px 0;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .info {
+            background: #e8f4f8;
+            padding: 15px;
+            border-left: 4px solid #355872;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>🌐 PEAK MAP - WebSocket Live Test</h1>
+    
+    <div class="info">
+        <strong>📋 Instructions:</strong>
+        <ol>
+            <li>Make sure backend is running: <code>python run_server.py</code></li>
+            <li>Connect as Driver (sends GPS every 3 seconds)</li>
+            <li>Open another browser tab and connect as Passenger</li>
+            <li>Watch GPS data broadcast in real-time!</li>
+        </ol>
+    </div>
+
+    <div class="grid">
+        <!-- Driver Panel -->
+        <div class="container">
+            <h2>🚍 Driver Panel</h2>
+            <input type="number" id="driverIdInput" placeholder="Driver ID (e.g., 1)" value="1">
+            <div id="driverStatus" class="status disconnected">Disconnected</div>
+            <button onclick="connectDriver()">Connect Driver</button>
+            <button class="disconnect" onclick="disconnectDriver()">Disconnect</button>
+            <button class="send" onclick="sendManualGPS()">Send GPS Now</button>
+            <button class="send" onclick="toggleAutoGPS()">Auto GPS: OFF</button>
+        </div>
+
+        <!-- Passenger Panel -->
+        <div class="container">
+            <h2>👤 Passenger Panel</h2>
+            <input type="number" id="passengerDriverIdInput" placeholder="Track Driver ID (e.g., 1)" value="1">
+            <div id="passengerStatus" class="status disconnected">Disconnected</div>
+            <button onclick="connectPassenger()">Connect Passenger</button>
+            <button class="disconnect" onclick="disconnectPassenger()">Disconnect</button>
+        </div>
+    </div>
+
+    <!-- Live GPS Data -->
+    <div class="container">
+        <h2>📍 Latest GPS Data (Passenger View)</h2>
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+            <div style="background: #ecf0f1; padding: 15px; border-radius: 5px; text-align: center;">
+                <div style="font-size: 12px; color: #7f8c8d;">Latitude</div>
+                <div id="latDisplay" style="font-size: 24px; font-weight: bold; color: #2c3e50;">-</div>
+            </div>
+            <div style="background: #ecf0f1; padding: 15px; border-radius: 5px; text-align: center;">
+                <div style="font-size: 12px; color: #7f8c8d;">Longitude</div>
+                <div id="lngDisplay" style="font-size: 24px; font-weight: bold; color: #2c3e50;">-</div>
+            </div>
+            <div style="background: #ecf0f1; padding: 15px; border-radius: 5px; text-align: center;">
+                <div style="font-size: 12px; color: #7f8c8d;">Speed (m/s)</div>
+                <div id="speedDisplay" style="font-size: 24px; font-weight: bold; color: #2c3e50;">-</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Activity Log -->
+    <div class="container">
+        <h2>📜 Activity Log</h2>
+        <button onclick="clearLog()" style="background: #95a5a6;">Clear Log</button>
+        <div id="log"></div>
+    </div>
+
+    <script>
+        let driverWs = null;
+        let passengerWs = null;
+        let autoGpsInterval = null;
+        let gpsLat = 14.6199;  // Cubao Station
+        let gpsLng = 121.0540;
+
+        function log(msg, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const icon = type === 'driver' ? '🚍' : type === 'passenger' ? '👤' : 'ℹ️';
+            const color = type === 'driver' ? '#3498db' : type === 'passenger' ? '#2ecc71' : '#95a5a6';
+            document.getElementById('log').innerHTML += 
+                `<span style="color: ${color}">[${timestamp}] ${icon} ${msg}</span>\n`;
+            document.getElementById('log').scrollTop = document.getElementById('log').scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+
+        function connectDriver() {
+            const driverId = document.getElementById('driverIdInput').value;
+            if (!driverId) {
+                alert('Please enter Driver ID');
+                return;
+            }
+
+            const wsUrl = `ws://127.0.0.1:8000/ws/driver/${driverId}`;
+            log(`Connecting to ${wsUrl}...`, 'driver');
+
+            driverWs = new WebSocket(wsUrl);
+
+            driverWs.onopen = () => {
+                log(`✅ Driver ${driverId} connected!`, 'driver');
+                document.getElementById('driverStatus').className = 'status connected';
+                document.getElementById('driverStatus').textContent = `Connected as Driver ${driverId}`;
+            };
+
+            driverWs.onmessage = (event) => {
+                log(`📩 Received (echoed): ${event.data}`, 'driver');
+            };
+
+            driverWs.onerror = (error) => {
+                log(`❌ Driver connection error: ${error}`, 'driver');
+            };
+
+            driverWs.onclose = () => {
+                log(`🔌 Driver disconnected`, 'driver');
+                document.getElementById('driverStatus').className = 'status disconnected';
+                document.getElementById('driverStatus').textContent = 'Disconnected';
+            };
+        }
+
+        function disconnectDriver() {
+            if (driverWs) {
+                driverWs.close();
+                driverWs = null;
+                stopAutoGPS();
+            }
+        }
+
+        function connectPassenger() {
+            const driverId = document.getElementById('passengerDriverIdInput').value;
+            if (!driverId) {
+                alert('Please enter Driver ID to track');
+                return;
+            }
+
+            const wsUrl = `ws://127.0.0.1:8000/ws/passenger/${driverId}`;
+            log(`Connecting to ${wsUrl}...`, 'passenger');
+
+            passengerWs = new WebSocket(wsUrl);
+
+            passengerWs.onopen = () => {
+                log(`✅ Passenger connected (tracking driver ${driverId})!`, 'passenger');
+                document.getElementById('passengerStatus').className = 'status connected';
+                document.getElementById('passengerStatus').textContent = `Tracking Driver ${driverId}`;
+            };
+
+            passengerWs.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                log(`📍 GPS Update: Lat ${data.latitude}, Lng ${data.longitude}, Speed ${data.speed}`, 'passenger');
+                
+                // Update display
+                document.getElementById('latDisplay').textContent = data.latitude.toFixed(6);
+                document.getElementById('lngDisplay').textContent = data.longitude.toFixed(6);
+                document.getElementById('speedDisplay').textContent = data.speed.toFixed(2);
+            };
+
+            passengerWs.onerror = (error) => {
+                log(`❌ Passenger connection error: ${error}`, 'passenger');
+            };
+
+            passengerWs.onclose = () => {
+                log(`🔌 Passenger disconnected`, 'passenger');
+                document.getElementById('passengerStatus').className = 'status disconnected';
+                document.getElementById('passengerStatus').textContent = 'Disconnected';
+            };
+        }
+
+        function disconnectPassenger() {
+            if (passengerWs) {
+                passengerWs.close();
+                passengerWs = null;
+            }
+        }
+
+        function sendManualGPS() {
+            if (!driverWs || driverWs.readyState !== WebSocket.OPEN) {
+                alert('Driver not connected!');
+                return;
+            }
+
+            // Simulate movement (small random changes)
+            gpsLat += (Math.random() - 0.5) * 0.001;
+            gpsLng += (Math.random() - 0.5) * 0.001;
+            const speed = Math.random() * 20;
+
+            const gpsData = {
+                latitude: gpsLat,
+                longitude: gpsLng,
+                speed: speed,
+                timestamp: new Date().toISOString()
+            };
+
+            driverWs.send(JSON.stringify(gpsData));
+            log(`📡 Sent GPS: ${JSON.stringify(gpsData)}`, 'driver');
+        }
+
+        function toggleAutoGPS() {
+            if (autoGpsInterval) {
+                stopAutoGPS();
+            } else {
+                startAutoGPS();
+            }
+        }
+
+        function startAutoGPS() {
+            autoGpsInterval = setInterval(sendManualGPS, 3000);
+            document.querySelector('button.send:last-of-type').textContent = 'Auto GPS: ON';
+            document.querySelector('button.send:last-of-type').style.background = '#e67e22';
+            log('🔄 Auto GPS started (every 3 seconds)', 'driver');
+        }
+
+        function stopAutoGPS() {
+            if (autoGpsInterval) {
+                clearInterval(autoGpsInterval);
+                autoGpsInterval = null;
+                document.querySelector('button.send:last-of-type').textContent = 'Auto GPS: OFF';
+                document.querySelector('button.send:last-of-type').style.background = '#2ecc71';
+                log('⏸️ Auto GPS stopped', 'driver');
+            }
+        }
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            disconnectDriver();
+            disconnectPassenger();
+        });
+    </script>
+</body>
+</html>

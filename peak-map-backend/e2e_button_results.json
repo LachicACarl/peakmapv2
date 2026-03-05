@@ -1,0 +1,131 @@
+{
+  "summary": {
+    "total": 20,
+    "passed": 16,
+    "failed": 4,
+    "pass_rate": 80.0
+  },
+  "results": [
+    {
+      "test": "Database Connection",
+      "status": "PASS",
+      "message": "Backend is responding",
+      "timestamp": "01:43:09"
+    },
+    {
+      "test": "Driver Login Button",
+      "status": "PASS",
+      "message": "Status: 422",
+      "timestamp": "01:43:09"
+    },
+    {
+      "test": "Passenger Login Button",
+      "status": "PASS",
+      "message": "Status: 422",
+      "timestamp": "01:43:09"
+    },
+    {
+      "test": "Get Available Drivers",
+      "status": "FAIL",
+      "message": "Status: 404",
+      "timestamp": "01:43:09"
+    },
+    {
+      "test": "Accept Passengers Toggle (ONLINE)",
+      "status": "PASS",
+      "message": "Status: 404",
+      "timestamp": "01:43:09"
+    },
+    {
+      "test": "Accept Passengers Toggle (OFFLINE)",
+      "status": "PASS",
+      "message": "Status: 404",
+      "timestamp": "01:43:09"
+    },
+    {
+      "test": "View Alerts Button (Get Alerts)",
+      "status": "PASS",
+      "message": "Found 0 alerts",
+      "timestamp": "01:43:09"
+    },
+    {
+      "test": "Select Station Button (API)",
+      "status": "PASS",
+      "message": "Loaded 5 stations",
+      "timestamp": "01:43:09"
+    },
+    {
+      "test": "Track Bus Button (Create Ride)",
+      "status": "PASS",
+      "message": "Status: 422",
+      "timestamp": "01:43:09"
+    },
+    {
+      "test": "Get Rides (driver_id=1)",
+      "status": "PASS",
+      "message": "Found 0 rides",
+      "timestamp": "01:43:09"
+    },
+    {
+      "test": "Get Rides (passenger_id=1)",
+      "status": "PASS",
+      "message": "Found 0 rides",
+      "timestamp": "01:43:09"
+    },
+    {
+      "test": "Get Fares",
+      "status": "FAIL",
+      "message": "Status: 500",
+      "timestamp": "01:43:09"
+    },
+    {
+      "test": "Payment Button (CASH)",
+      "status": "PASS",
+      "message": "Status: 422",
+      "timestamp": "01:43:09"
+    },
+    {
+      "test": "Payment Button (GCASH)",
+      "status": "PASS",
+      "message": "Status: 422",
+      "timestamp": "01:43:09"
+    },
+    {
+      "test": "Payment Button (EWALLET)",
+      "status": "PASS",
+      "message": "Status: 422",
+      "timestamp": "01:43:09"
+    },
+    {
+      "test": "Confirm Payment Button",
+      "status": "PASS",
+      "message": "Status: 404",
+      "timestamp": "01:43:09"
+    },
+    {
+      "test": "End Ride Button",
+      "status": "FAIL",
+      "message": "Status: 405",
+      "timestamp": "01:43:09"
+    },
+    {
+      "test": "Select Station Button (API)",
+      "status": "PASS",
+      "message": "Loaded 5 stations",
+      "timestamp": "01:43:09"
+    },
+    {
+      "test": "Track Bus Button (Create Ride)",
+      "status": "PASS",
+      "message": "Status: 422",
+      "timestamp": "01:43:09"
+    },
+    {
+      "test": "Complete Flow",
+      "status": "FAIL",
+      "message": "Could not create ride",
+      "timestamp": "01:43:09"
+    }
+  ],
+  "timestamp": "2026-02-26T01:43:09.738820"
+}

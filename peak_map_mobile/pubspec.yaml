@@ -1,0 +1,56 @@
+name: peak_map_mobile
+description: PEAK MAP - Live GPS tracking for EDSA bus passengers and drivers
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # Google Maps for live tracking
+  google_maps_flutter: ^2.5.0
+  
+  # GPS location services
+  geolocator: ^10.1.0
+  
+  # HTTP requests to backend API
+  http: ^1.2.0
+  
+  # WebSocket for real-time updates
+  web_socket_channel: ^2.4.0
+  
+  # QR code scanning
+  qr_code_scanner: ^1.0.1
+  
+  # QR code generation
+  qr_flutter: ^4.1.0
+  
+  # State management
+  provider: ^6.1.0
+  
+  # User session management
+  shared_preferences: ^2.2.0
+  
+  # Firebase Cloud Messaging for push notifications
+  firebase_core: ^2.24.2
+  firebase_messaging: ^14.7.9
+  
+  # Local notifications for foreground alerts
+  flutter_local_notifications: ^16.3.0
+  
+  # NFC for balance loading
+  nfc_manager: ^3.3.0
+  
+  # Icons
+  cupertino_icons: ^1.0.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.0
+
+flutter:
+  uses-material-design: true

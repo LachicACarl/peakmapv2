@@ -1,0 +1,223 @@
+{
+  "summary": {
+    "total": 26,
+    "passed": 21,
+    "failed": 5,
+    "pass_rate": 80.76923076923077
+  },
+  "scenarios": {
+    "Driver Flow": {
+      "pass": 4,
+      "fail": 1
+    },
+    "Passenger Flow": {
+      "pass": 4,
+      "fail": 1
+    },
+    "Payment Flow": {
+      "pass": 2,
+      "fail": 3
+    },
+    "Ride Management": {
+      "pass": 4,
+      "fail": 0
+    },
+    "Data Consistency": {
+      "pass": 3,
+      "fail": 0
+    },
+    "Error Handling": {
+      "pass": 3,
+      "fail": 0
+    },
+    "Load Test": {
+      "pass": 1,
+      "fail": 0
+    }
+  },
+  "results": [
+    {
+      "scenario": "Driver Flow",
+      "test": "Get drivers list",
+      "status": "PASS",
+      "message": "Found 5 drivers",
+      "timestamp": "01:52:52"
+    },
+    {
+      "scenario": "Driver Flow",
+      "test": "Toggle online status",
+      "status": "PASS",
+      "message": "Status: 200",
+      "timestamp": "01:52:52"
+    },
+    {
+      "scenario": "Driver Flow",
+      "test": "Get driver details",
+      "status": "PASS",
+      "message": "Driver: Juan dela Cruz",
+      "timestamp": "01:52:52"
+    },
+    {
+      "scenario": "Driver Flow",
+      "test": "Get driver rides",
+      "status": "PASS",
+      "message": "Found 4 rides",
+      "timestamp": "01:52:52"
+    },
+    {
+      "scenario": "Driver Flow",
+      "test": "Get alerts",
+      "status": "FAIL",
+      "message": "Status: 404",
+      "timestamp": "01:52:52"
+    },
+    {
+      "scenario": "Passenger Flow",
+      "test": "Get stations",
+      "status": "PASS",
+      "message": "Found 5 stations",
+      "timestamp": "01:52:52"
+    },
+    {
+      "scenario": "Passenger Flow",
+      "test": "Create ride",
+      "status": "PASS",
+      "message": "Ride ID: 11",
+      "timestamp": "01:52:52"
+    },
+    {
+      "scenario": "Passenger Flow",
+      "test": "Get ride details",
+      "status": "PASS",
+      "message": "Status: ongoing",
+      "timestamp": "01:52:52"
+    },
+    {
+      "scenario": "Passenger Flow",
+      "test": "Get passenger rides",
+      "status": "PASS",
+      "message": "Found 4 rides",
+      "timestamp": "01:52:52"
+    },
+    {
+      "scenario": "Passenger Flow",
+      "test": "Initiate payment",
+      "status": "FAIL",
+      "message": "Status: 422",
+      "timestamp": "01:52:52"
+    },
+    {
+      "scenario": "Payment Flow",
+      "test": "Get fares",
+      "status": "PASS",
+      "message": "Found 7 fares",
+      "timestamp": "01:52:52"
+    },
+    {
+      "scenario": "Payment Flow",
+      "test": "Initiate CASH payment",
+      "status": "FAIL",
+      "message": "Status: 422",
+      "timestamp": "01:52:52"
+    },
+    {
+      "scenario": "Payment Flow",
+      "test": "Initiate GCASH payment",
+      "status": "FAIL",
+      "message": "Status: 422",
+      "timestamp": "01:52:52"
+    },
+    {
+      "scenario": "Payment Flow",
+      "test": "Initiate EWALLET payment",
+      "status": "FAIL",
+      "message": "Status: 422",
+      "timestamp": "01:52:52"
+    },
+    {
+      "scenario": "Payment Flow",
+      "test": "Confirm payment",
+      "status": "PASS",
+      "message": "Payment confirmed",
+      "timestamp": "01:52:52"
+    },
+    {
+      "scenario": "Ride Management",
+      "test": "Get all rides",
+      "status": "PASS",
+      "message": "Found 11 rides",
+      "timestamp": "01:52:52"
+    },
+    {
+      "scenario": "Ride Management",
+      "test": "Get ride by ID",
+      "status": "PASS",
+      "message": "Status: completed",
+      "timestamp": "01:52:53"
+    },
+    {
+      "scenario": "Ride Management",
+      "test": "Update ride status",
+      "status": "PASS",
+      "message": "Status: 200",
+      "timestamp": "01:52:53"
+    },
+    {
+      "scenario": "Ride Management",
+      "test": "Check ride status",
+      "status": "PASS",
+      "message": "Status checked",
+      "timestamp": "01:52:53"
+    },
+    {
+      "scenario": "Data Consistency",
+      "test": "Driver count consistency",
+      "status": "PASS",
+      "message": "Count: 5",
+      "timestamp": "01:52:53"
+    },
+    {
+      "scenario": "Data Consistency",
+      "test": "Station count consistency",
+      "status": "PASS",
+      "message": "Count: 5",
+      "timestamp": "01:52:53"
+    },
+    {
+      "scenario": "Data Consistency",
+      "test": "Ride count consistency",
+      "status": "PASS",
+      "message": "Count: 11",
+      "timestamp": "01:52:53"
+    },
+    {
+      "scenario": "Error Handling",
+      "test": "Invalid driver ID returns 404",
+      "status": "PASS",
+      "message": "Correct error response",
+      "timestamp": "01:52:53"
+    },
+    {
+      "scenario": "Error Handling",
+      "test": "Invalid ride ID",
+      "status": "PASS",
+      "message": "Proper error response",
+      "timestamp": "01:52:53"
+    },
+    {
+      "scenario": "Error Handling",
+      "test": "Missing required fields",
+      "status": "PASS",
+      "message": "Validation error caught",
+      "timestamp": "01:52:53"
+    },
+    {
+      "scenario": "Load Test",
+      "test": "10 rapid requests",
+      "status": "PASS",
+      "message": "Success: 10/10, Time: 0.10s",
+      "timestamp": "01:52:53"
+    }
+  ],
+  "timestamp": "2026-02-26T01:52:53.208100"
+}
