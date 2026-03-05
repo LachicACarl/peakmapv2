@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -8,6 +8,7 @@ from app.database import get_db
 from app.models.gps_log import GPSLog
 from app.models.ride import Ride
 from app.models.station import Station
+from app.models.user import User
 from app.services.dropoff_service import check_dropoff
 from app.utils.geo import distance_in_meters
 
@@ -16,7 +17,7 @@ router = APIRouter(prefix="/rides", tags=["Rides"])
 
 class RideCreate(BaseModel):
     passenger_id: int
-    driver_id: int
+    driver_id: int | None = None
     station_id: int
 
 
@@ -36,13 +37,44 @@ class RideOut(BaseModel):
 @router.post("/", response_model=dict)
 def create_ride(ride: RideCreate, db: Session = Depends(get_db)):
     """Create a new ride when passenger boards the bus"""
+    # Validate passenger exists
+    passenger = db.query(User).filter(User.id == ride.passenger_id).first()
+    if not passenger:
+        raise HTTPException(status_code=404, detail="Passenger not found")
+
+    # Validate station exists
+    station = db.query(Station).filter(Station.id == ride.station_id).first()
+    if not station:
+        raise HTTPException(status_code=404, detail="Station not found")
+
+    # Driver can be provided explicitly, otherwise we auto-pick one
+    driver_id = ride.driver_id
+    if driver_id is None:
+        selected_driver = (
+            db.query(User)
+            .filter(User.role == "driver")
+            .order_by(User.id.asc())
+            .first()
+        )
+        if not selected_driver:
+            raise HTTPException(status_code=400, detail="No drivers available")
+        driver_id = selected_driver.id
+    else:
+        driver = (
+            db.query(User)
+            .filter(User.id == driver_id, User.role == "driver")
+            .first()
+        )
+        if not driver:
+            raise HTTPException(status_code=404, detail="Driver not found")
+
     # Calculate fare
     from app.services.fare_service import get_fare
     fare_amount = get_fare(db, from_station_id=1, to_station_id=ride.station_id)
     
     new_ride = Ride(
         passenger_id=ride.passenger_id,
-        driver_id=ride.driver_id,
+        driver_id=driver_id,
         station_id=ride.station_id,
         fare_amount=fare_amount if fare_amount else 0.0,
         status="ongoing"
@@ -54,7 +86,11 @@ def create_ride(ride: RideCreate, db: Session = Depends(get_db)):
     
     return {
         "message": "Ride started",
+        "id": new_ride.id,
         "ride_id": new_ride.id,
+        "passenger_id": new_ride.passenger_id,
+        "driver_id": new_ride.driver_id,
+        "station_id": new_ride.station_id,
         "fare_amount": new_ride.fare_amount,
         "status": new_ride.status
     }

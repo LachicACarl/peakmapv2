@@ -291,16 +291,21 @@ class ApiService {
   static Future<Map<String, dynamic>> createRide({
     required int passengerId,
     required int stationId,
+    int? driverId,
   }) async {
     try {
+      final payload = <String, dynamic>{
+        "passenger_id": passengerId,
+        "station_id": stationId,
+      };
+      if (driverId != null) {
+        payload["driver_id"] = driverId;
+      }
+
       final response = await http.post(
         Uri.parse("$baseUrl/rides"),
         headers: {"Content-Type": "application/json"},
-        body: jsonEncode({
-          "passenger_id": passengerId,
-          "station_id": stationId,
-          "status": "pending",
-        }),
+        body: jsonEncode(payload),
       );
       
       if (response.statusCode == 200) {
@@ -317,7 +322,7 @@ class ApiService {
   static Future<List<dynamic>> getDriverRides(int driverId) async {
     try {
       final response = await http.get(
-        Uri.parse("$baseUrl/rides?driver_id=$driverId&status=active"),
+        Uri.parse("$baseUrl/rides?driver_id=$driverId&status=ongoing"),
       );
       
       if (response.statusCode == 200) {

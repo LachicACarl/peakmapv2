@@ -1,14 +1,95 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 import random
+import hashlib
+import os
+import secrets
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from sqlalchemy.orm import Session
 
-from app.supabase_client import get_supabase_client
+from app.database import get_db
+from app.models.local_auth_user import LocalAuthUser
+from app.models.user import User
+from app.supabase_client import get_supabase_client, is_supabase_available
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
+
+
+def _normalize_identifier(value: str) -> str:
+    return value.strip().lower()
+
+
+def _hash_password(password: str) -> str:
+    pepper = os.getenv("LOCAL_AUTH_PEPPER", "peakmap_local_auth")
+    return hashlib.sha256(f"{pepper}:{password}".encode("utf-8")).hexdigest()
+
+
+def _create_local_token() -> str:
+    return f"local_{secrets.token_urlsafe(24)}"
+
+
+def _ensure_app_user(db: Session, identifier: str, name: str, user_type: str) -> int:
+    existing = db.query(User).filter(User.phone_number == identifier).first()
+    if existing:
+        return existing.id
+
+    user = User(full_name=name, phone_number=identifier, role=user_type)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user.id
+
+
+def _register_local_fallback(payload, db: Session, supabase_error: str | None = None):
+    identifier = _normalize_identifier(payload.email)
+    existing = db.query(LocalAuthUser).filter(LocalAuthUser.email == identifier).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Account already exists")
+
+    app_user_id = _ensure_app_user(db, identifier, payload.name, payload.user_type)
+    local_user = LocalAuthUser(
+        email=identifier,
+        password_hash=_hash_password(payload.password),
+        user_type=payload.user_type,
+        name=payload.name,
+        app_user_id=app_user_id,
+    )
+    db.add(local_user)
+    db.commit()
+    db.refresh(local_user)
+
+    return {
+        "success": True,
+        "message": "Registration successful (local fallback)",
+        "user_id": str(local_user.app_user_id or local_user.id),
+        "email": local_user.email,
+        "user_type": local_user.user_type,
+        "auth_method": "local_fallback",
+        "fallback_reason": supabase_error,
+    }
+
+
+def _login_local_fallback(payload, db: Session, supabase_error: str | None = None):
+    identifier = _normalize_identifier(payload.email)
+    local_user = db.query(LocalAuthUser).filter(LocalAuthUser.email == identifier).first()
+    if not local_user:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    if local_user.password_hash != _hash_password(payload.password):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    return {
+        "success": True,
+        "user_id": str(local_user.app_user_id or local_user.id),
+        "email": local_user.email,
+        "token": _create_local_token(),
+        "user_type": payload.user_type or local_user.user_type,
+        "auth_method": "local_fallback",
+        "fallback_reason": supabase_error,
+    }
 
 
 class AuthPayload(BaseModel):
@@ -41,8 +122,14 @@ class ResetPasswordPayload(BaseModel):
 
 
 @router.post("/register")
-def register(payload: RegisterPayload):
+def register(payload: RegisterPayload, db: Session = Depends(get_db)):
     """Register a new user (driver or passenger)"""
+    if payload.user_type not in ["driver", "passenger"]:
+        raise HTTPException(status_code=400, detail="user_type must be 'driver' or 'passenger'")
+
+    if not is_supabase_available():
+        return _register_local_fallback(payload, db, "supabase_sdk_unavailable")
+
     supabase = get_supabase_client()
     try:
         # Sign up with Supabase
@@ -74,22 +161,19 @@ def register(payload: RegisterPayload):
             "user_id": str(user.id),  # Use real Supabase user ID
             "email": user.email,
             "user_type": payload.user_type,
+            "auth_method": "supabase",
         }
     except Exception as exc:
         print(f"Registration error: {exc}")
-        # For demo, accept registration even if Supabase fails
-        return {
-            "success": True,
-            "message": "Registration successful (demo mode)",
-            "user_id": hash(payload.email) % 10000,
-            "email": payload.email,
-            "user_type": payload.user_type,
-        }
+        return _register_local_fallback(payload, db, str(exc))
 
 
 @router.post("/login")
-def login(payload: AuthPayload):
+def login(payload: AuthPayload, db: Session = Depends(get_db)):
     """Login user (driver or passenger)"""
+    if not is_supabase_available():
+        return _login_local_fallback(payload, db, "supabase_sdk_unavailable")
+
     supabase = get_supabase_client()
     try:
         # Try Supabase authentication
@@ -113,16 +197,7 @@ def login(payload: AuthPayload):
         }
     except Exception as exc:
         print(f"Login error: {exc}")
-        # For demo mode, accept any login
-        user_id = hash(payload.email) % 10000
-        return {
-            "success": True,
-            "user_id": user_id,
-            "email": payload.email,
-            "token": "demo_token",
-            "user_type": payload.user_type or "passenger",
-            "auth_method": "demo",
-        }
+        return _login_local_fallback(payload, db, str(exc))
 
 @router.post("/forgot-password")
 def forgot_password(payload: ForgotPasswordPayload):

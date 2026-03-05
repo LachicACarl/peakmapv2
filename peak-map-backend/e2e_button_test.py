@@ -184,8 +184,8 @@ def test_get_alerts(driver_id=1):
     """Test 9: View Alerts button (get alerts from API)"""
     try:
         response = requests.get(f"{BASE_URL}/alerts/", params={"driver_id": driver_id})
-        if response.status_code in [200, 404]:
-            alerts = response.json() if response.status_code == 200 else []
+        if response.status_code == 200:
+            alerts = response.json()
             log_test("View Alerts Button (Get Alerts)", "PASS", f"Found {len(alerts)} alerts")
             return alerts
         else:

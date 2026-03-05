@@ -85,6 +85,7 @@ class _PassengerDashboardState extends State<PassengerDashboard> {
       final result = await ApiService.createRide(
         passengerId: widget.passengerId,
         stationId: _selectedStationId!,
+        driverId: _selectedDriverId,
       );
 
       if (mounted) {

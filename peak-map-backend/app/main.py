@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import Base, engine
-from app.routes import admin, auth, drivers, eta, fares, gps, notifications, payments, ride_sessions, rides, stations, ws_gps
+from app.routes import alerts, admin, auth, drivers, eta, fares, gps, notifications, payments, ride_sessions, rides, stations, ws_gps
 
 # Import all models to ensure tables are created
 import app.models  # noqa: F401
@@ -30,6 +30,7 @@ app.add_middleware(
 # Include routers
 app.include_router(auth.router)  # Authentication endpoints
 app.include_router(drivers.router)  # Driver management endpoints
+app.include_router(alerts.router)  # Driver/passenger alerts
 app.include_router(stations.router)
 app.include_router(fares.router)
 app.include_router(gps.router)

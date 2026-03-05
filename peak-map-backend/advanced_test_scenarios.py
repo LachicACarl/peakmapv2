@@ -89,7 +89,7 @@ def test_scenario_1_driver_flow():
                                               params={"driver_id": driver_id})
                 if alerts_response.status_code == 200:
                     log_test("Driver Flow", "Get alerts", "PASS", 
-                            f"Alerts loaded")
+                            f"Status: {alerts_response.status_code}")
                 else:
                     log_test("Driver Flow", "Get alerts", "FAIL", 
                             f"Status: {alerts_response.status_code}")
@@ -114,8 +114,7 @@ def test_scenario_2_passenger_flow():
             if len(stations) >= 2:
                 # 2. Create a ride
                 ride_data = {
-                    "passenger_id": 6,
-                    "driver_id": 1,
+                    "passenger_id": 1,
                     "station_id": stations[1]['id']
                 }
                 
@@ -135,7 +134,7 @@ def test_scenario_2_passenger_flow():
                     
                     # 4. Get passenger rides
                     passenger_rides_response = requests.get(f"{BASE_URL}/rides/", 
-                                                           params={"passenger_id": 6})
+                                                           params={"passenger_id": 1})
                     if passenger_rides_response.status_code == 200:
                         log_test("Passenger Flow", "Get passenger rides", "PASS", 
                                 f"Found {len(passenger_rides_response.json())} rides")
@@ -143,8 +142,7 @@ def test_scenario_2_passenger_flow():
                     # 5. Initiate payment
                     payment_data = {
                         "ride_id": ride_id,
-                        "payment_method": "cash",
-                        "amount": 50.0
+                        "method": "cash"
                     }
                     payment_response = requests.post(f"{BASE_URL}/payments/initiate", 
                                                     json=payment_data)
@@ -176,17 +174,44 @@ def test_scenario_3_payment_flow():
         else:
             log_test("Payment Flow", "Get fares", "FAIL", f"Status: {fares_response.status_code}")
         
-        # 2. Test all payment methods
+        ride_station_id = 2
+        if fares_response.status_code == 200 and fares:
+            # create_ride currently computes fare from station 1 -> destination
+            # so pick a destination that has an existing configured fare.
+            for fare in fares:
+                if fare.get("from_station") == 1 and fare.get("to_station") != 1:
+                    ride_station_id = fare["to_station"]
+                    break
+
+        # 2. Test all payment methods using fresh rides
         payment_methods = ["cash", "gcash", "ewallet"]
+        created_payment_id = None
         for method in payment_methods:
+            ride_response = requests.post(
+                f"{BASE_URL}/rides",
+                json={"passenger_id": 1, "station_id": ride_station_id}
+            )
+            if ride_response.status_code not in [200, 201]:
+                log_test(
+                    "Payment Flow",
+                    f"Create ride for {method.upper()} payment",
+                    "FAIL",
+                    f"Status: {ride_response.status_code}"
+                )
+                continue
+
+            ride_json = ride_response.json()
+            ride_id = ride_json.get("ride_id") or ride_json.get("id")
             payment_data = {
-                "ride_id": 1,
-                "payment_method": method,
-                "amount": 100.0
+                "ride_id": ride_id,
+                "method": method,
             }
             payment_response = requests.post(f"{BASE_URL}/payments/initiate", 
                                             json=payment_data)
             if payment_response.status_code in [200, 201]:
+                payment_json = payment_response.json()
+                if method == "cash":
+                    created_payment_id = payment_json.get("payment_id")
                 log_test("Payment Flow", f"Initiate {method.upper()} payment", "PASS", 
                         "Payment created")
             else:
@@ -194,13 +219,18 @@ def test_scenario_3_payment_flow():
                         f"Status: {payment_response.status_code}")
         
         # 3. Confirm payment
-        payment_confirm = requests.put(f"{BASE_URL}/payments/1/status", 
-                                      json={"status": "completed"})
-        if payment_confirm.status_code in [200, 404]:
-            log_test("Payment Flow", "Confirm payment", "PASS", "Payment confirmed")
+        if created_payment_id is None:
+            log_test("Payment Flow", "Confirm payment", "FAIL", "No payment available to confirm")
         else:
-            log_test("Payment Flow", "Confirm payment", "FAIL", 
-                    f"Status: {payment_confirm.status_code}")
+            payment_confirm = requests.post(
+                f"{BASE_URL}/payments/confirm",
+                json={"payment_id": created_payment_id}
+            )
+            if payment_confirm.status_code == 200:
+                log_test("Payment Flow", "Confirm payment", "PASS", "Payment confirmed")
+            else:
+                log_test("Payment Flow", "Confirm payment", "FAIL", 
+                        f"Status: {payment_confirm.status_code}")
     except Exception as e:
         log_test("Payment Flow", "EXCEPTION", "FAIL", str(e))
 
