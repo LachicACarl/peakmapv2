@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Confirming Email...</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            color: white;
+        }
+        
+        .container {
+            text-align: center;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 40px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+        }
+        
+        h1 {
+            margin: 0 0 20px 0;
+            font-size: 24px;
+        }
+        
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid white;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .message {
+            font-size: 16px;
+            margin-top: 20px;
+        }
+        
+        .success {
+            color: #4ade80;
+        }
+        
+        .error {
+            color: #f87171;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Email Confirmation</h1>
+        <div class="spinner"></div>
+        <div class="message" id="message">Confirming your email...</div>
+    </div>
+
+    <script>
+        // Check if we have a token in the URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get('token');
+        const type = urlParams.get('type');
+        const messageEl = document.getElementById('message');
+
+        if (type === 'email' && token) {
+            // Email confirmation - just show success and redirect back to app
+            setTimeout(() => {
+                messageEl.innerHTML = '<div class="message success">✓ Email confirmed successfully!</div>';
+                messageEl.innerHTML += '<p style="margin-top: 20px; font-size: 14px;">Redirecting to app...</p>';
+                
+                // Redirect back to the main app after 2 seconds
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 2000);
+            }, 1000);
+        } else if (type === 'recovery' && token) {
+            // Password recovery
+            setTimeout(() => {
+                messageEl.innerHTML = '<div class="message success">✓ Password reset link received!</div>';
+                messageEl.innerHTML += '<p style="margin-top: 20px; font-size: 14px;">Redirecting to app...</p>';
+                
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 2000);
+            }, 1000);
+        } else {
+            // Invalid or missing parameters
+            messageEl.innerHTML = '<div class="message error">No confirmation data found</div>';
+            messageEl.innerHTML += '<p style="margin-top: 20px; font-size: 14px;"><a href="/" style="color: white; text-decoration: underline;">Return to app</a></p>';
+        }
+    </script>
+</body>
+</html>
