@@ -3,11 +3,15 @@ import 'package:flutter/material.dart';
 class PassengerAbout extends StatefulWidget {
   final int passengerId;
   final String email;
+  final String? passengerName;
+  final String? passengerPhone;
   
   const PassengerAbout({
     Key? key, 
     required this.passengerId, 
     required this.email,
+    this.passengerName,
+    this.passengerPhone,
   }) : super(key: key);
 
   @override
@@ -17,13 +21,18 @@ class PassengerAbout extends StatefulWidget {
 class _PassengerAboutState extends State<PassengerAbout> {
   late String _currentEmail;
   late String _currentName;
-  String _phoneNumber = '+1 234 567 8900';
+  String _phoneNumber = 'No phone on file';
 
   @override
   void initState() {
     super.initState();
     _currentEmail = widget.email;
-    _currentName = 'John Doe'; // Default name
+    _currentName = (widget.passengerName != null && widget.passengerName!.trim().isNotEmpty)
+        ? widget.passengerName!.trim()
+        : widget.email.split('@').first;
+    if (widget.passengerPhone != null && widget.passengerPhone!.trim().isNotEmpty) {
+      _phoneNumber = widget.passengerPhone!.trim();
+    }
   }
 
   void _showEditDialog(String field) {

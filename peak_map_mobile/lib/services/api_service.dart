@@ -286,6 +286,23 @@ class ApiService {
       throw Exception("Error updating driver status: $e");
     }
   }
+
+  /// Get driver profile details
+  static Future<Map<String, dynamic>> getDriverProfile(int driverId) async {
+    try {
+      final response = await http.get(
+        Uri.parse("$baseUrl/drivers/$driverId"),
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        throw Exception("Failed to get driver profile: ${response.statusCode}");
+      }
+    } catch (e) {
+      throw Exception("Error getting driver profile: $e");
+    }
+  }
   
   /// Create a new ride (Passenger)
   static Future<Map<String, dynamic>> createRide({
@@ -320,9 +337,22 @@ class ApiService {
   
   /// Get driver's active rides
   static Future<List<dynamic>> getDriverRides(int driverId) async {
+    return getDriverRidesByStatus(driverId: driverId, status: 'ongoing');
+  }
+
+  /// Get driver's rides filtered by status
+  static Future<List<dynamic>> getDriverRidesByStatus({
+    required int driverId,
+    String? status,
+  }) async {
     try {
+      var url = "$baseUrl/rides?driver_id=$driverId";
+      if (status != null && status.isNotEmpty) {
+        url += "&status=$status";
+      }
+
       final response = await http.get(
-        Uri.parse("$baseUrl/rides?driver_id=$driverId&status=ongoing"),
+        Uri.parse(url),
       );
       
       if (response.statusCode == 200) {

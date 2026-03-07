@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/api_service.dart';
 
 class DriverAbout extends StatefulWidget {
   final int driverId;
@@ -15,19 +16,32 @@ class DriverAbout extends StatefulWidget {
 }
 
 class _DriverAboutState extends State<DriverAbout> {
-  String driverName = 'Juan Dela Cruz';
-  String driverEmail = 'juan.driver@peakmap.com';
-  String phoneNumber = '+63 912 345 6789';
-  String licenseNumber = 'N02-23-123456';
-  String plateNumber = 'ABC 1234';
-  String vehicleModel = 'Hino Bus 2020';
-  double rating = 4.8;
-  int totalTrips = 1247;
+  String driverName = 'Driver';
+  String driverEmail = '';
+  String phoneNumber = 'Not set';
+  String licenseNumber = 'Not set';
+  String plateNumber = 'Not set';
+  String vehicleModel = 'Not set';
+
+  Future<void> _loadDriverProfile() async {
+    try {
+      final profile = await ApiService.getDriverProfile(widget.driverId);
+      if (!mounted) return;
+
+      setState(() {
+        driverName = (profile['full_name'] ?? driverName).toString();
+        phoneNumber = (profile['phone_number'] ?? phoneNumber).toString();
+      });
+    } catch (_) {
+      // Keep fallback values if driver profile endpoint is unavailable.
+    }
+  }
 
   @override
   void initState() {
     super.initState();
     driverEmail = widget.email;
+    _loadDriverProfile();
   }
 
   void _showEditDialog(String title, String currentValue, Function(String) onSave) {
@@ -192,36 +206,6 @@ class _DriverAboutState extends State<DriverAbout> {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 15),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.star, color: Colors.amber, size: 20),
-                          const SizedBox(width: 5),
-                          Text(
-                            rating.toString(),
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(width: 15),
-                          Container(
-                            width: 1,
-                            height: 20,
-                            color: Colors.white.withOpacity(0.5),
-                          ),
-                          const SizedBox(width: 15),
-                          Text(
-                            '$totalTrips Trips',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
-                      ),
                     ],
                   ),
                 ),
@@ -314,13 +298,6 @@ class _DriverAboutState extends State<DriverAbout> {
                 _buildMenuCard(Icons.lock_outline, 'Change Password', 'Update your password', () {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Change password')),
-                  );
-                }),
-                const SizedBox(height: 10),
-                
-                _buildMenuCard(Icons.payment_outlined, 'Earnings & Payments', 'View payment history', () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Earnings history')),
                   );
                 }),
                 const SizedBox(height: 10),

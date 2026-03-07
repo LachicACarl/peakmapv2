@@ -6,11 +6,15 @@ import 'passenger_about.dart';
 class PassengerHome extends StatefulWidget {
   final int passengerId;
   final String email;
+  final String? passengerName;
+  final String? passengerPhone;
   
   const PassengerHome({
     Key? key,
     required this.passengerId,
     required this.email,
+    this.passengerName,
+    this.passengerPhone,
   }) : super(key: key);
 
   @override
@@ -28,7 +32,12 @@ class _PassengerHomeState extends State<PassengerHome> {
     _screens = [
       PassengerDashboard(passengerId: widget.passengerId),
       PassengerSearchAlerts(passengerId: widget.passengerId),
-      PassengerAbout(passengerId: widget.passengerId, email: widget.email),
+      PassengerAbout(
+        passengerId: widget.passengerId,
+        email: widget.email,
+        passengerName: widget.passengerName,
+        passengerPhone: widget.passengerPhone,
+      ),
     ];
   }
 

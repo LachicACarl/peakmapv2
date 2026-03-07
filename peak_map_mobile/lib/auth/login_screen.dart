@@ -46,19 +46,30 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (result['success']) {
         if (!mounted) return;
+
+        final loggedInUserId = result['user_id'] as int;
+        final resolvedUserType = (result['user_type'] ?? widget.userType).toString();
+        final resolvedEmail = (result['email'] ?? _emailController.text.trim()).toString();
+        final profile = result['profile'] is Map
+            ? (result['profile'] as Map).cast<String, dynamic>()
+            : <String, dynamic>{};
+        final passengerName = (profile['name'] ?? '').toString();
+        final passengerPhone = (profile['phone'] ?? '').toString();
         
         // Navigate to appropriate home screen
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) => widget.userType == 'driver'
+            builder: (context) => resolvedUserType == 'driver'
                 ? DriverHome(
-                    driverId: result['user_id'],
-                    email: _emailController.text.trim(),
+                    driverId: loggedInUserId,
+                    email: resolvedEmail,
                   )
                 : PassengerHome(
-                    passengerId: result['user_id'],
-                    email: _emailController.text.trim(),
+                    passengerId: loggedInUserId,
+                    email: resolvedEmail,
+                    passengerName: passengerName.isEmpty ? null : passengerName,
+                    passengerPhone: passengerPhone.isEmpty ? null : passengerPhone,
                   ),
           ),
         );

@@ -43,7 +43,7 @@ def _find_supabase_user_by_email(supabase, email: str) -> Optional[dict]:
     try:
         result = (
             supabase.table("users")
-            .select("id,email,user_type")
+            .select("id,email,user_type,name,phone")
             .eq("email", email)
             .limit(1)
             .execute()
@@ -179,10 +179,25 @@ def _ensure_app_user(
         existing = db.query(User).filter(User.phone_number == identifier).first()
 
     if existing:
+        changed = False
+        if name and existing.full_name != name:
+            existing.full_name = name
+            changed = True
+        if user_type and existing.role != user_type:
+            existing.role = user_type
+            changed = True
+        if normalized_phone and existing.phone_number != normalized_phone:
+            existing.phone_number = normalized_phone
+            changed = True
+
+        if changed:
+            db.commit()
+            db.refresh(existing)
+
         return existing.id
 
     user = User(
-        full_name=name,
+        full_name=name or identifier,
         phone_number=normalized_phone or identifier,
         role=user_type,
     )
@@ -195,20 +210,68 @@ def _ensure_app_user(
 def _register_local_fallback(payload, db: Session, supabase_error: str | None = None):
     identifier = _normalize_identifier(payload.email)
     existing = db.query(LocalAuthUser).filter(LocalAuthUser.email == identifier).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Account already exists")
 
-    app_user_id = _ensure_app_user(db, identifier, payload.name, payload.user_type)
-    local_user = LocalAuthUser(
-        email=identifier,
-        password_hash=_hash_password(payload.password),
-        user_type=payload.user_type,
-        name=payload.name,
-        app_user_id=app_user_id,
+    phone = payload.phone.strip() if payload.phone else None
+    app_user_id = _ensure_app_user(
+        db,
+        identifier,
+        payload.name,
+        payload.user_type,
+        phone=phone,
     )
-    db.add(local_user)
-    db.commit()
-    db.refresh(local_user)
+    
+    if existing:
+        # Update existing local account instead of raising error
+        # (useful for repeated registration attempts during Supabase outages/rate limits)
+        existing.password_hash = _hash_password(payload.password)
+        existing.user_type = payload.user_type
+        existing.name = payload.name
+        existing.app_user_id = app_user_id
+        db.commit()
+        db.refresh(existing)
+        local_user = existing
+    else:
+        local_user = LocalAuthUser(
+            email=identifier,
+            password_hash=_hash_password(payload.password),
+            user_type=payload.user_type,
+            name=payload.name,
+            app_user_id=app_user_id,
+        )
+        db.add(local_user)
+        db.commit()
+        db.refresh(local_user)
+
+    # Best effort sync to Supabase public profile tables even when
+    # Auth signup is rate-limited and local fallback is used.
+    try:
+        if is_supabase_available():
+            supabase = get_supabase_client()
+            role_profile_payload: dict[str, Any] = {}
+            if payload.user_type == "driver":
+                role_profile_payload = {
+                    "license_number": payload.license_number.strip() if payload.license_number else None,
+                    "vehicle_plate": payload.vehicle_plate.strip() if payload.vehicle_plate else None,
+                    "vehicle_model": payload.vehicle_model.strip() if payload.vehicle_model else None,
+                }
+            elif payload.user_type == "passenger" and phone:
+                role_profile_payload = {"phone": phone}
+
+            public_user_id = _sync_supabase_user_profile(
+                supabase=supabase,
+                email=identifier,
+                name=payload.name,
+                user_type=payload.user_type,
+                phone=phone,
+            )
+            _ensure_supabase_role_profile(
+                supabase,
+                public_user_id,
+                payload.user_type,
+                role_profile_payload,
+            )
+    except Exception as exc:
+        print(f"Supabase public profile sync skipped during local fallback: {exc}")
 
     return {
         "success": True,
@@ -221,21 +284,124 @@ def _register_local_fallback(payload, db: Session, supabase_error: str | None = 
     }
 
 
+def _upsert_local_auth_shadow(
+    db: Session,
+    identifier: str,
+    password: str,
+    user_type: str,
+    name: Optional[str],
+    app_user_id: int,
+) -> None:
+    local_user = db.query(LocalAuthUser).filter(LocalAuthUser.email == identifier).first()
+    password_hash = _hash_password(password)
+
+    if local_user:
+        changed = False
+        if local_user.password_hash != password_hash:
+            local_user.password_hash = password_hash
+            changed = True
+        if local_user.user_type != user_type:
+            local_user.user_type = user_type
+            changed = True
+        if (name or identifier) != local_user.name:
+            local_user.name = name or identifier
+            changed = True
+        if local_user.app_user_id != app_user_id:
+            local_user.app_user_id = app_user_id
+            changed = True
+
+        if changed:
+            db.commit()
+        return
+
+    db.add(
+        LocalAuthUser(
+            email=identifier,
+            password_hash=password_hash,
+            user_type=user_type,
+            name=name or identifier,
+            app_user_id=app_user_id,
+        )
+    )
+    db.commit()
+
+
 def _login_local_fallback(payload, db: Session, supabase_error: str | None = None):
     identifier = _normalize_identifier(payload.email)
     local_user = db.query(LocalAuthUser).filter(LocalAuthUser.email == identifier).first()
     if not local_user:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+        return {
+            "success": False,
+            "message": "Invalid credentials",
+            "auth_method": "local_fallback",
+            "fallback_reason": supabase_error,
+        }
 
     if local_user.password_hash != _hash_password(payload.password):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+        return {
+            "success": False,
+            "message": "Invalid credentials",
+            "auth_method": "local_fallback",
+            "fallback_reason": supabase_error,
+        }
+
+    resolved_user_type = local_user.user_type
+    if payload.user_type and payload.user_type != resolved_user_type:
+        raise HTTPException(
+            status_code=403,
+            detail=f"This account is registered as {resolved_user_type}. Use {resolved_user_type} login.",
+        )
+
+    linked_user = None
+    if local_user.app_user_id:
+        linked_user = db.query(User).filter(User.id == local_user.app_user_id).first()
+
+    supabase_phone = None
+    try:
+        if is_supabase_available():
+            supabase = get_supabase_client()
+            supabase_user = _find_supabase_user_by_email(supabase, identifier)
+            if supabase_user and isinstance(supabase_user.get("phone"), str):
+                maybe_phone = supabase_user.get("phone", "").strip()
+                if maybe_phone:
+                    supabase_phone = maybe_phone
+    except Exception as exc:
+        print(f"Supabase phone lookup skipped during local fallback login: {exc}")
+
+    linked_phone = None
+    if linked_user and linked_user.phone_number and "@" not in linked_user.phone_number:
+        linked_phone = linked_user.phone_number
+
+    preferred_phone = supabase_phone or linked_phone
+
+    app_user_id = _ensure_app_user(
+        db,
+        identifier,
+        local_user.name,
+        resolved_user_type,
+        phone=preferred_phone,
+    )
+
+    if local_user.app_user_id != app_user_id:
+        local_user.app_user_id = app_user_id
+        db.commit()
+
+    app_user = db.query(User).filter(User.id == app_user_id).first()
+    profile_name = app_user.full_name if app_user and app_user.full_name else local_user.name
+    profile_phone = None
+    if app_user and app_user.phone_number and "@" not in app_user.phone_number:
+        profile_phone = app_user.phone_number
 
     return {
         "success": True,
-        "user_id": str(local_user.app_user_id or local_user.id),
+        "user_id": app_user_id,
         "email": local_user.email,
         "token": _create_local_token(),
-        "user_type": payload.user_type or local_user.user_type,
+        "user_type": resolved_user_type,
+        "profile": {
+            "name": profile_name,
+            "phone": profile_phone,
+        },
         "auth_method": "local_fallback",
         "fallback_reason": supabase_error,
     }
@@ -359,7 +525,18 @@ def register(payload: RegisterPayload, db: Session = Depends(get_db)):
         )
 
         # Keep local dashboard-compatible user mirror in sync.
-        _ensure_app_user(db, identifier, payload.name, payload.user_type, phone=phone)
+        app_user_id = _ensure_app_user(db, identifier, payload.name, payload.user_type, phone=phone)
+
+        # Keep local auth shadow in sync so fallback login works even when
+        # Supabase auth is temporarily unavailable or email confirmation is pending.
+        _upsert_local_auth_shadow(
+            db,
+            identifier=identifier,
+            password=payload.password,
+            user_type=payload.user_type,
+            name=payload.name,
+            app_user_id=app_user_id,
+        )
 
         return {
             "success": True,
@@ -377,7 +554,7 @@ def register(payload: RegisterPayload, db: Session = Depends(get_db)):
         print(f"Registration error: {error_text}")
 
         if "rate limit" in error_text_lower:
-            raise HTTPException(status_code=429, detail="Supabase rate limit exceeded")
+            return _register_local_fallback(payload, db, "supabase_rate_limit")
 
         if "already registered" in error_text_lower or "already exists" in error_text_lower:
             raise HTTPException(status_code=400, detail="Account already exists")
@@ -405,9 +582,11 @@ def login(payload: AuthPayload, db: Session = Depends(get_db)):
 
     supabase = get_supabase_client()
     try:
+        identifier = _normalize_identifier(payload.email)
+
         # Try Supabase authentication
         result = supabase.auth.sign_in_with_password(
-            {"email": payload.email, "password": payload.password}
+            {"email": identifier, "password": payload.password}
         )
         
         user = result.user
@@ -416,13 +595,45 @@ def login(payload: AuthPayload, db: Session = Depends(get_db)):
         if not user:
             # Fall back to local auth if Supabase returns no user
             return _login_local_fallback(payload, db, "supabase_no_user")
+
+        user_row = _find_supabase_user_by_email(supabase, identifier)
+        resolved_user_type = (
+            (user_row or {}).get("user_type")
+            or payload.user_type
+            or "passenger"
+        )
+
+        if payload.user_type and resolved_user_type != payload.user_type:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    f"This account is registered as {resolved_user_type}. "
+                    f"Use {resolved_user_type} login."
+                ),
+            )
+
+        display_name = (user_row or {}).get("name") or identifier.split("@")[0]
+        phone = (user_row or {}).get("phone")
+
+        app_user_id = _ensure_app_user(
+            db,
+            identifier,
+            display_name,
+            resolved_user_type,
+            phone=phone if isinstance(phone, str) else None,
+        )
         
         return {
             "success": True,
-            "user_id": str(user.id),  # Use real Supabase user ID
-            "email": user.email,
+            "user_id": app_user_id,
+            "supabase_user_id": str(user.id),
+            "email": identifier,
             "token": session.access_token if session else "",
-            "user_type": payload.user_type or "passenger",
+            "user_type": resolved_user_type,
+            "profile": {
+                "name": display_name,
+                "phone": phone,
+            },
             "auth_method": "supabase",
         }
     except HTTPException:
@@ -435,7 +646,8 @@ def login(payload: AuthPayload, db: Session = Depends(get_db)):
         # For development, fall back to local auth on any error
         # This includes: invalid credentials, email not confirmed, rate limits, etc.
         if "invalid login credentials" in error_text_lower or "invalid credentials" in error_text_lower:
-            # Try local fallback first before rejecting
+            # Try local fallback first; if local account does not exist, return
+            # a structured failure payload instead of raising HTTP 401.
             return _login_local_fallback(payload, db, error_text)
 
         if "email not confirmed" in error_text_lower:

@@ -1,16 +1,20 @@
 import os
-from typing import Optional
+from typing import Any, Optional, TYPE_CHECKING
 
 from dotenv import load_dotenv
 
+if TYPE_CHECKING:
+    from supabase import Client as SupabaseClient
+else:
+    SupabaseClient = Any
+
 # Try to import supabase, but handle gracefully if not installed
 try:
-    from supabase import Client, create_client
+    from supabase import create_client
     SUPABASE_AVAILABLE = True
 except ImportError:
     print("⚠️  Supabase module not installed. Running in demo mode.")
     SUPABASE_AVAILABLE = False
-    Client = None
     create_client = None
 
 load_dotenv()
@@ -20,7 +24,7 @@ SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 SUPABASE_KEY = SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY
 
-_client: Optional[Client] = None
+_client: Optional[SupabaseClient] = None
 
 
 class MockSupabaseClient:

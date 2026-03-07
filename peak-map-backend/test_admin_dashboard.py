@@ -178,7 +178,7 @@ def main():
     # Test 10: Driver Registration
     print_section("10. DRIVER REGISTRATION")
     
-    test_user_email = f"test_driver_{datetime.now().timestamp()}@example.com"
+    test_user_email = f"test_driver_{int(datetime.now().timestamp())}@example.com"
     test_endpoint(
         "Register New Driver",
         "POST",

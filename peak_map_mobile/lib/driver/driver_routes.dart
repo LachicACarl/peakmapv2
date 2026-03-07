@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/api_service.dart';
 
 class DriverRoutes extends StatefulWidget {
   final int driverId;
@@ -11,54 +12,107 @@ class DriverRoutes extends StatefulWidget {
 
 class _DriverRoutesState extends State<DriverRoutes> {
   String _selectedView = 'Active';
+  bool _isLoadingRoutes = true;
+  String? _errorMessage;
 
-  final List<Map<String, dynamic>> _activeRoutes = [
-    {
-      'routeName': 'EDSA Carousel',
-      'routeCode': 'EDC-01',
-      'from': 'Quezon Avenue',
-      'to': 'Ayala Station',
-      'distance': '18.5 km',
-      'stops': 12,
-      'passengers': 8,
-      'status': 'In Progress',
-      'statusColor': Colors.blue,
-      'departureTime': '10:30 AM',
-      'arrivalTime': '11:45 AM',
-      'earnings': '₱840',
-    },
-  ];
+  List<Map<String, dynamic>> _activeRoutes = [];
+  List<Map<String, dynamic>> _completedRoutes = [];
 
-  final List<Map<String, dynamic>> _completedRoutes = [
-    {
-      'routeName': 'EDSA Carousel',
-      'routeCode': 'EDC-02',
-      'from': 'Ayala Station',
-      'to': 'Quezon Avenue',
-      'distance': '18.5 km',
-      'stops': 12,
-      'passengers': 15,
-      'status': 'Completed',
-      'statusColor': Colors.green,
-      'departureTime': '08:00 AM',
-      'arrivalTime': '09:20 AM',
-      'earnings': '₱1,050',
-    },
-    {
-      'routeName': 'EDSA Carousel',
-      'routeCode': 'EDC-01',
-      'from': 'Quezon Avenue',
-      'to': 'Ayala Station',
-      'distance': '18.5 km',
-      'stops': 12,
-      'passengers': 12,
-      'status': 'Completed',
-      'statusColor': Colors.green,
-      'departureTime': '06:30 AM',
-      'arrivalTime': '07:45 AM',
-      'earnings': '₱960',
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _loadRoutes();
+  }
+
+  Future<void> _loadRoutes() async {
+    setState(() {
+      _isLoadingRoutes = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final activeRides = await ApiService.getDriverRidesByStatus(
+        driverId: widget.driverId,
+        status: 'ongoing',
+      );
+
+      final completedChunks = await Future.wait([
+        ApiService.getDriverRidesByStatus(driverId: widget.driverId, status: 'completed'),
+        ApiService.getDriverRidesByStatus(driverId: widget.driverId, status: 'dropped'),
+        ApiService.getDriverRidesByStatus(driverId: widget.driverId, status: 'missed'),
+        ApiService.getDriverRidesByStatus(driverId: widget.driverId, status: 'cancelled'),
+      ]);
+
+      final completedRides = completedChunks.expand((chunk) => chunk).toList();
+
+      if (!mounted) return;
+      setState(() {
+        _activeRoutes = _normalizeRides(activeRides);
+        _completedRoutes = _normalizeRides(completedRides);
+        _isLoadingRoutes = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = 'Failed to load driver routes: $e';
+        _isLoadingRoutes = false;
+      });
+    }
+  }
+
+  List<Map<String, dynamic>> _normalizeRides(List<dynamic> rides) {
+    final normalized = rides
+        .whereType<Map>()
+        .map((ride) {
+          final data = ride.cast<String, dynamic>();
+          final status = (data['status'] ?? 'unknown').toString();
+          return {
+            'id': data['id'] ?? 0,
+            'station_name': (data['station_name'] ?? 'Unknown station').toString(),
+            'status': status,
+            'status_color': _statusColor(status),
+            'started_at': _formatTimestamp(data['started_at']),
+            'ended_at': _formatTimestamp(data['ended_at']),
+          };
+        })
+        .toList();
+
+    normalized.sort((a, b) => (b['id'] as int).compareTo(a['id'] as int));
+    return normalized;
+  }
+
+  String _formatTimestamp(dynamic rawValue) {
+    if (rawValue == null) {
+      return '--';
+    }
+
+    final value = rawValue.toString();
+    try {
+      final parsed = DateTime.parse(value).toLocal();
+      final month = parsed.month.toString().padLeft(2, '0');
+      final day = parsed.day.toString().padLeft(2, '0');
+      final hour = parsed.hour.toString().padLeft(2, '0');
+      final minute = parsed.minute.toString().padLeft(2, '0');
+      return '$month/$day $hour:$minute';
+    } catch (_) {
+      return value;
+    }
+  }
+
+  Color _statusColor(String status) {
+    switch (status) {
+      case 'ongoing':
+        return Colors.blue;
+      case 'completed':
+      case 'dropped':
+        return Colors.green;
+      case 'missed':
+      case 'cancelled':
+        return Colors.orange;
+      default:
+        return Colors.grey;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -104,10 +158,6 @@ class _DriverRoutesState extends State<DriverRoutes> {
                   Expanded(
                     child: _buildViewSelector('Completed', Icons.check_circle),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildViewSelector('Scheduled', Icons.schedule),
-                  ),
                 ],
               ),
             ),
@@ -116,16 +166,47 @@ class _DriverRoutesState extends State<DriverRoutes> {
 
             // Routes List
             Expanded(
-              child: _selectedView == 'Active' 
-                  ? _buildRoutesList(_activeRoutes)
-                  : _selectedView == 'Completed'
-                  ? _buildRoutesList(_completedRoutes)
-                  : _buildEmptyState(),
+              child: _buildBody(),
             ),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildBody() {
+    if (_isLoadingRoutes) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_errorMessage != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, color: Colors.red, size: 56),
+              const SizedBox(height: 12),
+              Text(
+                _errorMessage!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 14),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: _loadRoutes,
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return _selectedView == 'Active'
+        ? _buildRoutesList(_activeRoutes)
+        : _buildRoutesList(_completedRoutes);
   }
 
   Widget _buildViewSelector(String label, IconData icon) {
@@ -215,7 +296,7 @@ class _DriverRoutesState extends State<DriverRoutes> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            route['routeName'],
+                            'Ride #${route['id']}',
                             style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
@@ -223,7 +304,7 @@ class _DriverRoutesState extends State<DriverRoutes> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            route['routeCode'],
+                            route['station_name'],
                             style: TextStyle(
                               fontSize: 12,
                               color: Colors.grey[600],
@@ -238,13 +319,13 @@ class _DriverRoutesState extends State<DriverRoutes> {
                         vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        color: route['statusColor'].withOpacity(0.1),
+                        color: (route['status_color'] as Color).withOpacity(0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
-                        route['status'],
+                        route['status'].toString().toUpperCase(),
                         style: TextStyle(
-                          color: route['statusColor'],
+                          color: route['status_color'] as Color,
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
                         ),
@@ -258,66 +339,26 @@ class _DriverRoutesState extends State<DriverRoutes> {
                 // Route Path
                 Row(
                   children: [
-                    Column(
-                      children: [
-                        Container(
-                          width: 12,
-                          height: 12,
-                          decoration: BoxDecoration(
-                            color: Colors.blue,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 2),
-                          ),
-                        ),
-                        Container(
-                          width: 2,
-                          height: 30,
-                          color: Colors.grey[300],
-                        ),
-                        Container(
-                          width: 12,
-                          height: 12,
-                          decoration: BoxDecoration(
-                            color: Colors.red,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 2),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(width: 16),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            route['from'],
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                            ),
+                          const Text(
+                            'Started',
+                            style: TextStyle(fontSize: 12, color: Colors.grey),
                           ),
                           Text(
-                            route['departureTime'],
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey[600],
-                            ),
+                            route['started_at'],
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                           ),
                           const SizedBox(height: 12),
-                          Text(
-                            route['to'],
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                            ),
+                          const Text(
+                            'Ended',
+                            style: TextStyle(fontSize: 12, color: Colors.grey),
                           ),
                           Text(
-                            route['arrivalTime'],
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey[600],
-                            ),
+                            route['ended_at'],
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                           ),
                         ],
                       ),
@@ -326,79 +367,11 @@ class _DriverRoutesState extends State<DriverRoutes> {
                 ),
 
                 const SizedBox(height: 16),
-                const Divider(),
-                const SizedBox(height: 12),
-
-                // Route Stats
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _buildRouteStat(
-                      Icons.straighten,
-                      route['distance'],
-                      'Distance',
-                    ),
-                    Container(
-                      height: 30,
-                      width: 1,
-                      color: Colors.grey[300],
-                    ),
-                    _buildRouteStat(
-                      Icons.location_on,
-                      '${route['stops']}',
-                      'Stops',
-                    ),
-                    Container(
-                      height: 30,
-                      width: 1,
-                      color: Colors.grey[300],
-                    ),
-                    _buildRouteStat(
-                      Icons.people,
-                      '${route['passengers']}',
-                      'Passengers',
-                    ),
-                    Container(
-                      height: 30,
-                      width: 1,
-                      color: Colors.grey[300],
-                    ),
-                    _buildRouteStat(
-                      Icons.attach_money,
-                      route['earnings'],
-                      'Earned',
-                    ),
-                  ],
-                ),
               ],
             ),
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildRouteStat(IconData icon, String value, String label) {
-    return Column(
-      children: [
-        Icon(icon, size: 18, color: Colors.grey[600]),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 10,
-            color: Colors.grey[600],
-          ),
-        ),
-      ],
     );
   }
 
@@ -414,7 +387,7 @@ class _DriverRoutesState extends State<DriverRoutes> {
           ),
           const SizedBox(height: 16),
           Text(
-            'No ${_selectedView.toLowerCase()} routes',
+            _selectedView == 'Active' ? 'No active routes' : 'No completed routes',
             style: TextStyle(
               fontSize: 18,
               color: Colors.grey[600],
@@ -423,9 +396,7 @@ class _DriverRoutesState extends State<DriverRoutes> {
           ),
           const SizedBox(height: 8),
           Text(
-            _selectedView == 'Scheduled' 
-                ? 'Check back later for scheduled routes'
-                : 'Start a new route to see it here',
+            'Ride data will appear once trips are recorded in the backend.',
             style: TextStyle(
               fontSize: 14,
               color: Colors.grey[500],

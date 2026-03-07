@@ -4,6 +4,42 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthService {
   static const String baseUrl = 'http://127.0.0.1:8000';
+
+  static int? _parseUserId(dynamic raw) {
+    if (raw is int) {
+      return raw;
+    }
+    if (raw is String) {
+      return int.tryParse(raw);
+    }
+    return null;
+  }
+
+  static Future<Map<String, dynamic>> _fetchDriverProfile(int driverId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/drivers/$driverId'),
+      );
+
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'data': jsonDecode(response.body),
+        };
+      }
+
+      final error = jsonDecode(response.body);
+      return {
+        'success': false,
+        'message': error['detail'] ?? 'Driver profile not found',
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Failed to fetch driver profile: $e',
+      };
+    }
+  }
   
   /// Login user (driver or passenger)
   static Future<Map<String, dynamic>> login({
@@ -24,20 +60,51 @@ class AuthService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
+
+        if (data['success'] == false) {
+          return {
+            'success': false,
+            'message': data['message'] ?? 'Invalid credentials',
+          };
+        }
+
+        final resolvedUserType = (data['user_type'] ?? userType).toString();
+        final userId = _parseUserId(data['user_id']);
+        Map<String, dynamic>? driverData;
+
+        if (userId == null) {
+          return {
+            'success': false,
+            'message': 'Invalid user id returned by server',
+          };
+        }
+
+        if (resolvedUserType == 'driver') {
+          final profile = await _fetchDriverProfile(userId);
+          if (!(profile['success'] as bool)) {
+            return {
+              'success': false,
+              'message': profile['message'] ?? 'Failed to fetch driver profile',
+            };
+          }
+          driverData = (profile['data'] as Map).cast<String, dynamic>();
+        }
         
         // Save user session
         await _saveSession(
-          userId: data['user_id'],
-          email: email,
-          userType: userType,
+          userId: userId,
+          email: (data['email'] ?? email).toString(),
+          userType: resolvedUserType,
           token: data['token'] ?? '',
         );
         
         return {
           'success': true,
-          'user_id': data['user_id'],
-          'email': email,
-          'user_type': userType,
+          'user_id': userId,
+          'email': (data['email'] ?? email).toString(),
+          'user_type': resolvedUserType,
+          'profile': data['profile'],
+          'driver_data': driverData,
         };
       } else {
         final error = jsonDecode(response.body);
@@ -48,20 +115,9 @@ class AuthService {
       }
     } catch (e) {
       print('Login error: $e');
-      // For demo purposes, create a mock user
-      final userId = email.hashCode.abs() % 10000;
-      await _saveSession(
-        userId: userId,
-        email: email,
-        userType: userType,
-        token: 'demo_token',
-      );
-      
       return {
-        'success': true,
-        'user_id': userId,
-        'email': email,
-        'user_type': userType,
+        'success': false,
+        'message': 'Connection error. Please try again.',
       };
     }
   }
@@ -71,17 +127,27 @@ class AuthService {
     required String email,
     required String password,
     required String userType,
+    String? name,
+    String? phone,
   }) async {
     try {
+      final normalizedName =
+          (name != null && name.trim().isNotEmpty) ? name.trim() : email.split('@')[0];
+
+      final payload = <String, dynamic>{
+        'email': email,
+        'password': password,
+        'user_type': userType,
+        'name': normalizedName,
+      };
+      if (phone != null && phone.trim().isNotEmpty) {
+        payload['phone'] = phone.trim();
+      }
+
       final response = await http.post(
         Uri.parse('$baseUrl/auth/register'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'email': email,
-          'password': password,
-          'user_type': userType,
-          'name': email.split('@')[0], // Use email prefix as name
-        }),
+        body: jsonEncode(payload),
       );
 
       if (response.statusCode == 201 || response.statusCode == 200) {
@@ -98,10 +164,9 @@ class AuthService {
       }
     } catch (e) {
       print('Registration error: $e');
-      // For demo, accept any registration
       return {
-        'success': true,
-        'message': 'Registration successful (demo mode)',
+        'success': false,
+        'message': 'Connection error. Please try again.',
       };
     }
   }

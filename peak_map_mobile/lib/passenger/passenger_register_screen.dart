@@ -55,6 +55,8 @@ class _PassengerRegisterScreenState extends State<PassengerRegisterScreen> {
         email: _emailController.text.trim(),
         password: _passwordController.text,
         userType: 'passenger',
+        name: _nameController.text.trim(),
+        phone: _mobileController.text.trim(),
       );
 
       if (result['success']) {
