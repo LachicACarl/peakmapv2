@@ -559,7 +559,7 @@ def _is_card_blocked(db: Session, user_id: str) -> bool:
 
 @router.post("/tap-in")
 def tap_in_passenger(payload: TapInPayload, db: Session = Depends(get_db)):
-    """Passenger taps in when entering a bus via NFC/RC522 scanner."""
+    """Passenger taps in when entering a bus via an NFC/RFID scanner."""
     try:
         if _is_card_blocked(db, payload.user_id):
             return {
@@ -991,6 +991,7 @@ def block_card(user_id: str, payload: CardStatusPayload, db: Session = Depends(g
         # Create a marker transaction to track card blocking
         block_transaction = Payment(
             user_id=user_id,
+            ride_id=0,  # Legacy SQLite compatibility (non-null ride_id)
             amount=0.0,
             method="card_blocked",
             status="paid",
@@ -1027,6 +1028,7 @@ def request_card_replacement(user_id: str, payload: CardStatusPayload, db: Sessi
         # Create replacement request marker
         replacement_transaction = Payment(
             user_id=user_id,
+            ride_id=0,  # Legacy SQLite compatibility (non-null ride_id)
             amount=0.0,
             method="card_replacement",
             status="pending",

@@ -13,6 +13,28 @@ from app.models.station import Station
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
 
+def _ride_station_ids(ride: Ride) -> tuple[int | None, int | None]:
+    """Support both legacy (from/to) and current (station_id) ride schemas."""
+    from_station_id = getattr(ride, "from_station_id", None)
+    to_station_id = getattr(ride, "to_station_id", None)
+    station_id = getattr(ride, "station_id", None)
+
+    if from_station_id is None and station_id is not None:
+        from_station_id = station_id
+    if to_station_id is None and station_id is not None:
+        to_station_id = station_id
+
+    return from_station_id, to_station_id
+
+
+def _driver_display_name(driver: User) -> str:
+    return (
+        getattr(driver, "username", None)
+        or getattr(driver, "full_name", None)
+        or f"Driver {driver.id}"
+    )
+
+
 @router.get("/active_rides")
 def get_active_rides(db: Session = Depends(get_db)):
     """
@@ -43,6 +65,8 @@ def get_active_rides(db: Session = Depends(get_db)):
 
     ride_data = []
     for ride in rides:
+        from_station_id, to_station_id = _ride_station_ids(ride)
+
         # Get latest GPS for this driver
         gps = (
             db.query(GPSLog)
@@ -55,8 +79,8 @@ def get_active_rides(db: Session = Depends(get_db)):
             "ride_id": ride.id,
             "passenger_id": ride.passenger_id,
             "driver_id": ride.driver_id,
-            "from_station_id": ride.from_station_id,
-            "to_station_id": ride.to_station_id,
+            "from_station_id": from_station_id,
+            "to_station_id": to_station_id,
             "status": ride.status,
             "fare_amount": ride.fare_amount,
             "driver_lat": gps.latitude if gps else None,
@@ -108,7 +132,7 @@ def get_all_drivers(db: Session = Depends(get_db)):
         
         driver_data.append({
             "driver_id": driver.id,
-            "username": driver.username,
+            "username": _driver_display_name(driver),
             "latitude": gps.latitude if gps else None,
             "longitude": gps.longitude if gps else None,
             "speed": gps.speed if gps else None,
@@ -275,22 +299,26 @@ def get_stations_overview(db: Session = Depends(get_db)):
     Returns ride counts per station (as origin and destination).
     """
     stations = db.query(Station).all()
+
+    from_station_col = getattr(Ride, "from_station_id", None)
+    to_station_col = getattr(Ride, "to_station_id", None)
+    station_col = getattr(Ride, "station_id", None)
     
     station_stats = []
     for station in stations:
         # Count rides starting from this station
-        rides_from = (
-            db.query(Ride)
-            .filter(Ride.from_station_id == station.id)
-            .count()
-        )
+        if from_station_col is not None:
+            rides_from = db.query(Ride).filter(from_station_col == station.id).count()
+        elif station_col is not None:
+            rides_from = db.query(Ride).filter(station_col == station.id).count()
+        else:
+            rides_from = 0
         
         # Count rides ending at this station
-        rides_to = (
-            db.query(Ride)
-            .filter(Ride.to_station_id == station.id)
-            .count()
-        )
+        if to_station_col is not None:
+            rides_to = db.query(Ride).filter(to_station_col == station.id).count()
+        else:
+            rides_to = 0
         
         station_stats.append({
             "station_id": station.id,

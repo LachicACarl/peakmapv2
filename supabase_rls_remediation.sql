@@ -18,6 +18,8 @@ ALTER TABLE IF EXISTS public.stations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public.fares ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public.gps_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public.payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.rfid_cards ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.rfid_entry_exit_logs ENABLE ROW LEVEL SECURITY;
 
 COMMIT;
 
@@ -39,7 +41,9 @@ BEGIN
     'stations',
     'fares',
     'gps_logs',
-    'payments'
+    'payments',
+    'rfid_cards',
+    'rfid_entry_exit_logs'
   ] LOOP
     IF to_regclass(format('public.%I', t)) IS NOT NULL THEN
       p := format('Service role has full access to %s', t);
@@ -179,7 +183,9 @@ WHERE schemaname = 'public'
     'stations',
     'fares',
     'gps_logs',
-    'payments'
+    'payments',
+    'rfid_cards',
+    'rfid_entry_exit_logs'
   )
 ORDER BY tablename;
 
@@ -197,6 +203,8 @@ WHERE schemaname = 'public'
     'stations',
     'fares',
     'gps_logs',
-    'payments'
+    'payments',
+    'rfid_cards',
+    'rfid_entry_exit_logs'
   )
 ORDER BY tablename, policyname;

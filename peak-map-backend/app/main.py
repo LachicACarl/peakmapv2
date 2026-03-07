@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import Base, engine
-from app.routes import alerts, admin, auth, drivers, eta, fares, gps, notifications, payments, ride_sessions, rides, stations, ws_gps
+from app.routes import alerts, admin, auth, drivers, eta, fares, gps, notifications, payments, rfid, ride_sessions, rides, stations, ws_gps
 
 # Import all models to ensure tables are created
 import app.models  # noqa: F401
@@ -15,13 +15,16 @@ app = FastAPI(title="PEAK MAP API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "http://127.0.0.1:5500",
+        "http://localhost:5500",
         "http://localhost:8080",
         "http://localhost:8000",
         "http://127.0.0.1:8080",
         "http://127.0.0.1:8000",
-        "http://localhost:*",
-        "*"  # Allow all origins in development
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
     ],
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],  # Allow all methods (GET, POST, PUT, DELETE, etc.)
     allow_headers=["*"],  # Allow all headers
@@ -38,6 +41,7 @@ app.include_router(eta.router)
 app.include_router(rides.router)
 app.include_router(ride_sessions.router)
 app.include_router(payments.router)
+app.include_router(rfid.router)
 app.include_router(ws_gps.router)  # WebSocket for real-time GPS updates
 app.include_router(admin.router)  # Admin dashboard endpoints
 app.include_router(notifications.router)  # Push notifications

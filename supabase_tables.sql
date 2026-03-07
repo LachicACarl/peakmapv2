@@ -115,6 +115,36 @@ CREATE TABLE IF NOT EXISTS payments (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
+-- 9. RFID Card Registry Table
+CREATE TABLE IF NOT EXISTS rfid_cards (
+  id BIGSERIAL PRIMARY KEY,
+  card_uid VARCHAR(64) UNIQUE NOT NULL,
+  user_id BIGINT REFERENCES users(id),
+  alias VARCHAR(255),
+  status VARCHAR(50) DEFAULT 'active',
+  registered_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  last_tapped_at TIMESTAMP
+);
+
+-- 10. RFID Entry/Exit Event Log Table
+CREATE TABLE IF NOT EXISTS rfid_entry_exit_logs (
+  id BIGSERIAL PRIMARY KEY,
+  card_uid VARCHAR(64) NOT NULL,
+  user_id BIGINT REFERENCES users(id),
+  user_identifier VARCHAR(255),
+  mode VARCHAR(16) NOT NULL CHECK (mode IN ('entry', 'exit')),
+  status VARCHAR(50) DEFAULT 'SUCCESS',
+  source VARCHAR(100) DEFAULT 'admin_dashboard',
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_rfid_cards_user_id ON rfid_cards(user_id);
+CREATE INDEX IF NOT EXISTS idx_rfid_cards_card_uid ON rfid_cards(card_uid);
+CREATE INDEX IF NOT EXISTS idx_rfid_entry_exit_created_at ON rfid_entry_exit_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_rfid_entry_exit_mode ON rfid_entry_exit_logs(mode);
+CREATE INDEX IF NOT EXISTS idx_rfid_entry_exit_card_uid ON rfid_entry_exit_logs(card_uid);
+
 -- Insert Sample Stations (if not exist)
 INSERT INTO stations (name, latitude, longitude, address) 
 SELECT 'Quezon Avenue Station', 14.6091, 121.0270, 'Quezon Avenue, QC'
@@ -153,6 +183,8 @@ ALTER TABLE IF EXISTS public.rides ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public.gps_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public.fares ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public.payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.rfid_cards ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.rfid_entry_exit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public.admins ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public.buses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public.bus_updates ENABLE ROW LEVEL SECURITY;

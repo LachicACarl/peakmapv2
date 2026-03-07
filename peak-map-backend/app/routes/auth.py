@@ -55,72 +55,98 @@ def _find_supabase_user_by_email(supabase, email: str) -> Optional[dict]:
         return None
 
 
-def _sync_supabase_user_profile(supabase, email: str, name: str, user_type: str) -> Optional[int]:
+def _sync_supabase_user_profile(
+    supabase,
+    email: str,
+    name: str,
+    user_type: str,
+    phone: Optional[str] = None,
+) -> Optional[int]:
     existing = _find_supabase_user_by_email(supabase, email)
+    update_payload = {"name": name, "user_type": user_type}
+    if phone:
+        update_payload["phone"] = phone
 
     if existing:
-        try:
-            (
-                supabase.table("users")
-                .update({"name": name, "user_type": user_type})
-                .eq("id", existing.get("id"))
-                .execute()
-            )
-        except Exception as exc:
-            print(f"Supabase users update skipped: {exc}")
+        (
+            supabase.table("users")
+            .update(update_payload)
+            .eq("id", existing.get("id"))
+            .execute()
+        )
         return existing.get("id")
 
-    try:
-        result = (
-            supabase.table("users")
-            .insert(
-                {
-                    "email": email,
-                    "name": name,
-                    "user_type": user_type,
-                    "phone": "",
-                }
-            )
-            .execute()
+    result = (
+        supabase.table("users")
+        .insert(
+            {
+                "email": email,
+                "name": name,
+                "user_type": user_type,
+                "phone": phone or "",
+            }
         )
-        rows = _response_data(result)
-        if rows:
-            return rows[0].get("id")
-    except Exception as exc:
-        print(f"Supabase users insert skipped: {exc}")
+        .execute()
+    )
+    rows = _response_data(result)
+    if rows:
+        return rows[0].get("id")
 
-    return None
+    raise RuntimeError("Supabase users sync failed: no row returned from insert")
 
 
-def _ensure_supabase_role_profile(supabase, public_user_id: Optional[int], user_type: str) -> None:
+def _ensure_supabase_role_profile(
+    supabase,
+    public_user_id: Optional[int],
+    user_type: str,
+    profile_payload: Optional[dict[str, Any]] = None,
+) -> None:
     if not public_user_id:
-        return
+        raise RuntimeError("Supabase role sync failed: users.id is missing")
 
     table_name = "drivers" if user_type == "driver" else "passengers"
-    try:
-        existing = (
-            supabase.table(table_name)
-            .select("id")
-            .eq("user_id", public_user_id)
-            .limit(1)
-            .execute()
-        )
-        if _response_data(existing):
-            return
+    payload = {"user_id": public_user_id}
+    if profile_payload:
+        for key, value in profile_payload.items():
+            if value is not None and value != "":
+                payload[key] = value
 
-        supabase.table(table_name).insert({"user_id": public_user_id}).execute()
-    except Exception as exc:
-        print(f"Supabase {table_name} sync skipped: {exc}")
+    existing = (
+        supabase.table(table_name)
+        .select("id")
+        .eq("user_id", public_user_id)
+        .limit(1)
+        .execute()
+    )
+    existing_rows = _response_data(existing)
+    if existing_rows:
+        update_payload = {k: v for k, v in payload.items() if k != "user_id"}
+        if update_payload:
+            (
+                supabase.table(table_name)
+                .update(update_payload)
+                .eq("id", existing_rows[0].get("id"))
+                .execute()
+            )
+        return
+
+    supabase.table(table_name).insert(payload).execute()
 
 
-def _ensure_not_already_registered(identifier: str, db: Session, supabase) -> None:
-    local_existing = db.query(LocalAuthUser).filter(LocalAuthUser.email == identifier).first()
-    if local_existing:
-        raise HTTPException(status_code=400, detail="Account already exists")
-
+def _ensure_not_already_registered(
+    identifier: str,
+    db: Session,
+    supabase,
+    check_local: bool = True,
+) -> None:
     supabase_existing = _find_supabase_user_by_email(supabase, identifier)
     if supabase_existing:
         raise HTTPException(status_code=400, detail="Account already exists")
+
+    if check_local:
+        local_existing = db.query(LocalAuthUser).filter(LocalAuthUser.email == identifier).first()
+        if local_existing:
+            raise HTTPException(status_code=400, detail="Account already exists")
 
 
 def _normalize_identifier(value: str) -> str:
@@ -136,12 +162,30 @@ def _create_local_token() -> str:
     return f"local_{secrets.token_urlsafe(24)}"
 
 
-def _ensure_app_user(db: Session, identifier: str, name: str, user_type: str) -> int:
-    existing = db.query(User).filter(User.phone_number == identifier).first()
+def _ensure_app_user(
+    db: Session,
+    identifier: str,
+    name: str,
+    user_type: str,
+    phone: Optional[str] = None,
+) -> int:
+    normalized_phone = phone.strip() if phone else None
+    existing = None
+
+    if normalized_phone:
+        existing = db.query(User).filter(User.phone_number == normalized_phone).first()
+
+    if not existing:
+        existing = db.query(User).filter(User.phone_number == identifier).first()
+
     if existing:
         return existing.id
 
-    user = User(full_name=name, phone_number=identifier, role=user_type)
+    user = User(
+        full_name=name,
+        phone_number=normalized_phone or identifier,
+        role=user_type,
+    )
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -226,6 +270,10 @@ class RegisterPayload(BaseModel):
     password: str
     user_type: str  # 'driver' or 'passenger'
     name: str
+    phone: Optional[str] = None
+    license_number: Optional[str] = None
+    vehicle_plate: Optional[str] = None
+    vehicle_model: Optional[str] = None
 
 
 class ForgotPasswordPayload(BaseModel):
@@ -263,7 +311,8 @@ def register(payload: RegisterPayload, db: Session = Depends(get_db)):
 
     supabase = get_supabase_client()
     try:
-        _ensure_not_already_registered(identifier, db, supabase)
+        # In Supabase mode, do not block on stale local-only records.
+        _ensure_not_already_registered(identifier, db, supabase, check_local=False)
 
         # Sign up with Supabase Auth and store role metadata.
         result = supabase.auth.sign_up(
@@ -283,14 +332,34 @@ def register(payload: RegisterPayload, db: Session = Depends(get_db)):
         if not user:
             raise HTTPException(status_code=400, detail="Registration failed")
 
+        phone = payload.phone.strip() if payload.phone else None
+        role_profile_payload: dict[str, Any] = {}
+        if payload.user_type == "driver":
+            role_profile_payload = {
+                "license_number": payload.license_number.strip() if payload.license_number else None,
+                "vehicle_plate": payload.vehicle_plate.strip() if payload.vehicle_plate else None,
+                "vehicle_model": payload.vehicle_model.strip() if payload.vehicle_model else None,
+            }
+        elif payload.user_type == "passenger" and phone:
+            role_profile_payload = {"phone": phone}
+
         # Keep public profile and role-specific table in sync.
         public_user_id = _sync_supabase_user_profile(
             supabase=supabase,
             email=identifier,
             name=payload.name,
             user_type=payload.user_type,
+            phone=phone,
         )
-        _ensure_supabase_role_profile(supabase, public_user_id, payload.user_type)
+        _ensure_supabase_role_profile(
+            supabase,
+            public_user_id,
+            payload.user_type,
+            role_profile_payload,
+        )
+
+        # Keep local dashboard-compatible user mirror in sync.
+        _ensure_app_user(db, identifier, payload.name, payload.user_type, phone=phone)
 
         return {
             "success": True,

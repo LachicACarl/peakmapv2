@@ -17,6 +17,8 @@ load_dotenv()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+SUPABASE_KEY = SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY
 
 _client: Optional[Client] = None
 
@@ -68,11 +70,11 @@ def get_supabase_client():
             print("ℹ️  Using mock Supabase client (demo mode)")
             _client = MockSupabaseClient()
         else:
-            if not SUPABASE_URL or not SUPABASE_ANON_KEY:
-                raise ValueError("SUPABASE_URL or SUPABASE_ANON_KEY is not set")
-            _client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+            if not SUPABASE_URL or not SUPABASE_KEY:
+                raise ValueError("SUPABASE_URL and a Supabase key are required")
+            _client = create_client(SUPABASE_URL, SUPABASE_KEY)
     return _client
 
 
 def is_supabase_available() -> bool:
-    return SUPABASE_AVAILABLE and bool(SUPABASE_URL and SUPABASE_ANON_KEY)
+    return SUPABASE_AVAILABLE and bool(SUPABASE_URL and SUPABASE_KEY)

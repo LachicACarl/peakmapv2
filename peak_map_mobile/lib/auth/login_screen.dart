@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../driver/driver_home.dart';
 import '../passenger/passenger_home.dart';
-import '../driver/driver_register_screen.dart';
 import '../passenger/passenger_register_screen.dart';
 import '../passenger/forgot_password_screen.dart';
 
@@ -90,14 +89,10 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _handleRegister() {
-    final isDriver = widget.userType == 'driver';
-    
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => isDriver
-            ? const DriverRegisterScreen()
-            : const PassengerRegisterScreen(),
+        builder: (context) => const PassengerRegisterScreen(),
       ),
     );
   }
@@ -275,32 +270,37 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 16),
                         
-                        // Register Button
-                        SizedBox(
-                          width: double.infinity,
-                          height: 50,
-                          child: OutlinedButton(
-                            onPressed: _handleRegister,
-                            style: OutlinedButton.styleFrom(
-                              side: const BorderSide(
-                                color: Color(0xFF355872),
-                                width: 2,
+                        // Register Button (passengers only)
+                        if (!isDriver)
+                          Column(
+                            children: [
+                              SizedBox(
+                                width: double.infinity,
+                                height: 50,
+                                child: OutlinedButton(
+                                  onPressed: _handleRegister,
+                                  style: OutlinedButton.styleFrom(
+                                    side: const BorderSide(
+                                      color: Color(0xFF355872),
+                                      width: 2,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                  child: const Text(
+                                    'REGISTER',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF355872),
+                                    ),
+                                  ),
+                                ),
                               ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: const Text(
-                              'REGISTER',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF355872),
-                              ),
-                            ),
+                              const SizedBox(height: 16),
+                            ],
                           ),
-                        ),
-                        const SizedBox(height: 16),
                         
                         Text(
                           'Demo: Use any email/password (6+ chars)',
