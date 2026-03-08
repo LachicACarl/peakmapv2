@@ -1,0 +1,33 @@
+{
+  "meta": {
+    "driver_id": 1,
+    "station_id": 1,
+    "station_name": "Monumento",
+    "base_url": "http://192.168.5.32:8000",
+    "started_at": "2026-03-08T23:02:31",
+    "ended_at": "2026-03-08T23:02:31",
+    "sample_count": 1
+  },
+  "result": {
+    "arrived": true,
+    "first_eta_minutes": 0.0,
+    "actual_arrival_seconds": 0.0,
+    "initial_prediction_seconds": 0.0,
+    "initial_prediction_error_seconds": 0.0,
+    "mae_seconds": 0.0
+  },
+  "samples": [
+    {
+      "timestamp_iso": "2026-03-08T23:02:31",
+      "elapsed_seconds": 0.0,
+      "eta_minutes": 0.0,
+      "eta_text": "Arrived",
+      "stops_remaining": 0,
+      "current_station": "Monumento",
+      "destination_station": "",
+      "bus_latitude": 14.6542,
+      "bus_longitude": 120.9844,
+      "distance_to_station_m": 0.0
+    }
+  ]
+}

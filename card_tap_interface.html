@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RFID Card Tap - PeakMap</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 500px;
+            width: 100%;
+            padding: 40px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 28px;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .tap-area {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            border: 3px dashed #667eea;
+            border-radius: 15px;
+            padding: 40px 20px;
+            text-align: center;
+            margin-bottom: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .tap-area:hover {
+            background: linear-gradient(135deg, #e0e7ff 0%, #b8c6ea 100%);
+            border-color: #764ba2;
+        }
+
+        .tap-icon {
+            font-size: 60px;
+            margin-bottom: 15px;
+            display: block;
+        }
+
+        .tap-text {
+            font-size: 18px;
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        .input-group label {
+            display: block;
+            color: #333;
+            font-weight: 600;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .result {
+            margin-top: 20px;
+            padding: 20px;
+            border-radius: 10px;
+            display: none;
+        }
+
+        .result.success {
+            background: #d4edda;
+            border: 2px solid #28a745;
+            display: block;
+        }
+
+        .result.error {
+            background: #f8d7da;
+            border: 2px solid #dc3545;
+            display: block;
+        }
+
+        .result-header {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(0,0,0,0.1);
+        }
+
+        .info-row:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .info-value {
+            font-weight: 600;
+            color: #333;
+            font-size: 14px;
+        }
+
+        .balance-display {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            margin: 15px 0;
+        }
+
+        .balance-amount {
+            font-size: 36px;
+            font-weight: 700;
+        }
+
+        .balance-label {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-bottom: 5px;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        .tapping {
+            animation: pulse 1s infinite;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎫 RFID Card Tap</h1>
+            <p>Tap or enter card UID to check owner & balance</p>
+        </div>
+
+        <div class="tap-area" id="tapArea" onclick="focusInput()">
+            <span class="tap-icon">📡</span>
+            <span class="tap-text">Tap Card Here</span>
+        </div>
+
+        <div class="input-group">
+            <label for="cardUid">Card UID</label>
+            <input 
+                type="text" 
+                id="cardUid" 
+                placeholder="Enter card UID (e.g., 1603310630)" 
+                autocomplete="off"
+                onkeypress="handleKeyPress(event)"
+            >
+        </div>
+
+        <button class="btn" onclick="tapCard()">
+            🔍 Check Card
+        </button>
+
+        <div class="result" id="result"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://127.0.0.1:8000';
+
+        function focusInput() {
+            document.getElementById('cardUid').focus();
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                tapCard();
+            }
+        }
+
+        async function tapCard() {
+            const cardUid = document.getElementById('cardUid').value.trim();
+            const resultDiv = document.getElementById('result');
+            const tapArea = document.getElementById('tapArea');
+
+            if (!cardUid) {
+                showError('Please enter a card UID');
+                return;
+            }
+
+            // Show tapping animation
+            tapArea.classList.add('tapping');
+            resultDiv.style.display = 'none';
+
+            try {
+                const response = await fetch(`${API_BASE}/rfid/cards/tap/${cardUid}`);
+                const data = await response.json();
+
+                tapArea.classList.remove('tapping');
+
+                if (data.success && data.registered) {
+                    showSuccess(data);
+                } else {
+                    showError(data.message || 'Card not registered');
+                }
+            } catch (error) {
+                tapArea.classList.remove('tapping');
+                showError('Failed to connect to server. Make sure backend is running.');
+            }
+        }
+
+        function showSuccess(data) {
+            const resultDiv = document.getElementById('result');
+            const user = data.user || {};
+            const card = data.card || {};
+            const balance = data.balance || {};
+
+            resultDiv.className = 'result success';
+            resultDiv.innerHTML = `
+                <div class="result-header">
+                    ✅ Card Recognized
+                </div>
+                
+                <div class="info-row">
+                    <span class="info-label">Card UID</span>
+                    <span class="info-value">${card.card_uid || 'N/A'}</span>
+                </div>
+                
+                <div class="info-row">
+                    <span class="info-label">Card Alias</span>
+                    <span class="info-value">${card.alias || 'N/A'}</span>
+                </div>
+
+                <div class="info-row">
+                    <span class="info-label">Status</span>
+                    <span class="info-value" style="color: #28a745;">${card.status || 'N/A'}</span>
+                </div>
+
+                ${user.user_id ? `
+                <div style="border-top: 2px solid #28a745; margin: 15px 0; padding-top: 15px;">
+                    <div class="info-row">
+                        <span class="info-label">👤 Owner Name</span>
+                        <span class="info-value">${user.name || 'N/A'}</span>
+                    </div>
+                    
+                    <div class="info-row">
+                        <span class="info-label">📧 Email</span>
+                        <span class="info-value">${user.email || 'N/A'}</span>
+                    </div>
+
+                    <div class="info-row">
+                        <span class="info-label">🆔 User ID</span>
+                        <span class="info-value">${user.user_id || 'N/A'}</span>
+                    </div>
+                </div>
+
+                <div class="balance-display">
+                    <div class="balance-label">Current Balance</div>
+                    <div class="balance-amount">${balance.formatted || '₱0.00'}</div>
+                    <div class="balance-label">${balance.currency || 'PHP'}</div>
+                </div>
+                ` : `
+                <div style="color: #856404; background: #fff3cd; padding: 15px; border-radius: 8px; margin-top: 15px;">
+                    ⚠️ Card is registered but not linked to any user
+                </div>
+                `}
+            `;
+        }
+
+        function showError(message) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.className = 'result error';
+            resultDiv.innerHTML = `
+                <div class="result-header">
+                    ❌ Error
+                </div>
+                <p style="margin-top: 10px; color: #721c24;">${message}</p>
+            `;
+        }
+
+        // Auto-focus input on page load
+        window.onload = function() {
+            document.getElementById('cardUid').focus();
+        };
+
+        // Listen for card scans (simulated as rapid typing)
+        let scanBuffer = '';
+        let scanTimeout;
+
+        document.addEventListener('keydown', function(e) {
+            // If input is focused, let it handle the input
+            if (document.activeElement === document.getElementById('cardUid')) {
+                return;
+            }
+
+            // Accumulate scan data
+            if (e.key.length === 1 || e.key === 'Enter') {
+                clearTimeout(scanTimeout);
+                
+                if (e.key === 'Enter' && scanBuffer.length > 0) {
+                    document.getElementById('cardUid').value = scanBuffer;
+                    tapCard();
+                    scanBuffer = '';
+                } else if (e.key.length === 1) {
+                    scanBuffer += e.key;
+                    scanTimeout = setTimeout(() => {
+                        scanBuffer = '';
+                    }, 100);
+                }
+            }
+        });
+    </script>
+</body>
+</html>

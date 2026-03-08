@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.gps_log import GPSLog
+from app.services.driver_presence import mark_driver_online
 
 router = APIRouter(prefix="/gps", tags=["GPS"])
 
@@ -40,6 +41,9 @@ def update_gps(data: GPSUpdate, db: Session = Depends(get_db)):
     db.add(gps)
     db.commit()
     db.refresh(gps)
+
+    # A fresh GPS heartbeat means the driver is actively online.
+    mark_driver_online(data.driver_id, source="gps_update")
 
     return {"status": "GPS updated", "id": gps.id}
 

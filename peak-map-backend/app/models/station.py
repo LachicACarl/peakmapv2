@@ -11,3 +11,4 @@ class Station(Base):
     latitude = Column(Float, nullable=False)
     longitude = Column(Float, nullable=False)
     radius = Column(Integer, nullable=False)
+    order = Column(Integer, nullable=True)  # Station order in route (1-22 for EDSA Carousel)

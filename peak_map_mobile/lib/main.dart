@@ -6,7 +6,6 @@ import 'package:provider/provider.dart';
 import 'auth/login_screen.dart';
 import 'services/notification_service.dart';
 import 'services/api_service.dart';
-import 'bus/bus_entry_scanner.dart';
 import 'firebase_options.dart';
 
 /// Background message handler (must be top-level function)
@@ -26,15 +25,11 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
   // Initialize Firebase (skip if not configured or on web)
-  bool firebaseInitialized = false;
   try {
-    // For web, Firebase often requires additional configuration
-    // Skip if running on web for now (use Supabase instead)
     if (!kIsWeb) {
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
       );
-      firebaseInitialized = true;
       
       // Set up background message handler
       FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
@@ -42,7 +37,7 @@ void main() async {
       // Initialize notification service
       await NotificationService.initialize();
     } else {
-      print('ℹ️  Firebase skipped for web - using Supabase instead');
+      print('ℹ️  Firebase skipped for web - using backend auth APIs');
     }
   } catch (e) {
     print('⚠️ Firebase initialization error: $e');

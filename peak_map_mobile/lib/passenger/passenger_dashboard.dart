@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:geolocator/geolocator.dart';
+import 'dart:async';
 import '../services/api_service.dart';
 import './passenger_map.dart';
 import './passenger_balance_view.dart';
@@ -18,6 +22,244 @@ class _PassengerDashboardState extends State<PassengerDashboard> {
   String? _selectedStationName;
   int? _selectedDriverId;
   bool _isLoading = false;
+  DateTime? _departureTime;
+  DateTime? _estimatedArrivalTime;
+  String _durationBadge = '00:00:00';
+  String _etaSummary = 'Tap card on entry to start';
+  String _driverLocationSummary = 'Driver location unavailable';
+  double _estimatedFarePhp = 0.0;
+  String? _entryCardUid;
+  
+  // OpenStreetMap
+  MapController? _mapController;
+  Position? _currentPosition;
+  final List<Marker> _markers = [];
+  bool _isLoadingMap = true;
+  
+  // Default location (Manila)
+  static const LatLng _defaultLocation = LatLng(14.5995, 120.9842);
+
+  static const String _phpCurrencyCode = 'PHP';
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeMap();
+  }
+
+  @override
+  void dispose() {
+    _mapController?.dispose();
+    super.dispose();
+  }
+
+  String _formatTime(DateTime? value) {
+    if (value == null) return '00:00';
+    final hour = value.hour.toString().padLeft(2, '0');
+    final minute = value.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
+  }
+
+  String _formatDate(DateTime? value) {
+    if (value == null) return 'Not started';
+    const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final day = weekdays[value.weekday - 1];
+    final month = months[value.month - 1];
+    return '$day, ${value.day} $month';
+  }
+
+  String _formatDurationFromSeconds(int seconds) {
+    final safeSeconds = seconds < 0 ? 0 : seconds;
+    final hours = (safeSeconds ~/ 3600).toString().padLeft(2, '0');
+    final minutes = ((safeSeconds % 3600) ~/ 60).toString().padLeft(2, '0');
+    final secs = (safeSeconds % 60).toString().padLeft(2, '0');
+    return '$hours:$minutes:$secs';
+  }
+
+  Future<void> _refreshTripPreview({
+    required int driverId,
+    required int stationId,
+  }) async {
+    try {
+      final gps = await ApiService.getLatestGPS(driverId);
+      final eta = await ApiService.getETA(driverId: driverId, stationId: stationId);
+
+      final lat = (gps['latitude'] as num?)?.toDouble();
+      final lng = (gps['longitude'] as num?)?.toDouble();
+
+      final etaSeconds = (eta['seconds'] as num?)?.toInt() ?? 0;
+      final etaDuration = (eta['duration'] as String?) ?? 'N/A';
+      final etaDistance = (eta['distance'] as String?) ?? 'N/A';
+      final hasEta = etaSeconds > 0;
+
+      if (!mounted) return;
+
+      setState(() {
+        _driverLocationSummary = (lat != null && lng != null)
+            ? '${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}'
+            : 'Driver location unavailable';
+        _etaSummary = etaDuration == 'N/A'
+            ? 'ETA unavailable'
+            : '$etaDuration • $etaDistance';
+        if (hasEta) {
+          _durationBadge = _formatDurationFromSeconds(etaSeconds);
+          _estimatedArrivalTime = DateTime.now().add(Duration(seconds: etaSeconds));
+        }
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _etaSummary = 'ETA unavailable';
+      });
+    }
+  }
+
+  /// Initialize map with current location and nearby stations
+  Future<void> _initializeMap() async {
+    await _getCurrentLocation();
+    await _loadNearbyStations();
+  }
+
+  /// Get current location
+  Future<void> _getCurrentLocation() async {
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        setState(() => _isLoadingMap = false);
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          setState(() => _isLoadingMap = false);
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        setState(() => _isLoadingMap = false);
+        return;
+      }
+
+      Position position = await Geolocator.getCurrentPosition();
+      setState(() {
+        _currentPosition = position;
+        _isLoadingMap = false;
+      });
+
+      // Move map to current location
+      if (_mapController != null) {
+        _mapController!.move(
+          LatLng(position.latitude, position.longitude),
+          14.0,
+        );
+      }
+    } catch (e) {
+      print('Error getting location: $e');
+      setState(() => _isLoadingMap = false);
+    }
+  }
+
+  /// Load nearby stations and add as markers
+  Future<void> _loadNearbyStations() async {
+    try {
+      final stations = await ApiService.getStations();
+      
+      for (var station in stations) {
+        final stationData = station as Map<String, dynamic>;
+        final lat = stationData['latitude'];
+        final lng = stationData['longitude'];
+        
+        if (lat != null && lng != null) {
+          _markers.add(
+            Marker(
+              width: 40,
+              height: 40,
+              point: LatLng(lat.toDouble(), lng.toDouble()),
+              child: GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _selectedStationId = stationData['id'];
+                    _selectedStationName = stationData['name'];
+                    _selectedDriverId = stationData['driver_id'];
+                  });
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Selected: ${stationData['name']}'),
+                      backgroundColor: Colors.green,
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                },
+                child: Column(
+                  children: [
+                    const Icon(
+                      Icons.location_on,
+                      color: Colors.orange,
+                      size: 40,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+      }
+      
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      print('Error loading stations: $e');
+    }
+  }
+
+  Future<String?> _requestEntryCardUid() async {
+    final controller = TextEditingController(text: _entryCardUid ?? '');
+    final value = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Tap Card On Entry'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Enter or scan the card UID used for bus entry.'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              textInputAction: TextInputAction.done,
+              decoration: const InputDecoration(
+                labelText: 'Card UID',
+                hintText: 'e.g. 1603310630',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final trimmed = controller.text.trim();
+              Navigator.of(dialogContext).pop(trimmed.isEmpty ? null : trimmed);
+            },
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+
+    controller.dispose();
+    return value;
+  }
 
   /// Show station picker dialog
   Future<void> _showStationPicker() async {
@@ -79,13 +321,72 @@ class _PassengerDashboardState extends State<PassengerDashboard> {
       return;
     }
 
+    final cardUid = await _requestEntryCardUid();
+    if (!mounted) return;
+
+    if (cardUid == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Card tap is required to start the trip')),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
+      final requestedDriverId = _selectedDriverId ?? 1;
+
+      final tapInResult = await ApiService.tapInPassenger(
+        userId: widget.passengerId.toString(),
+        busId: requestedDriverId.toString(),
+        driverId: requestedDriverId.toString(),
+        stationId: _selectedStationId!,
+        cardUid: cardUid,
+      );
+
+      if (tapInResult['success'] != true) {
+        final errorMessage = tapInResult['error']?.toString() ??
+            tapInResult['message']?.toString() ??
+            'Tap-in failed';
+        throw Exception(errorMessage);
+      }
+
       final result = await ApiService.createRide(
         passengerId: widget.passengerId,
         stationId: _selectedStationId!,
-        driverId: _selectedDriverId,
+        driverId: requestedDriverId,
+      );
+
+      final resolvedDriverId = (result['driver_id'] as num?)?.toInt() ?? _selectedDriverId ?? 1;
+      final resolvedRideId = (result['ride_id'] as num?)?.toInt() ?? (result['id'] as num?)?.toInt() ?? 1;
+      final fareFromApi = (result['fare_amount'] as num?)?.toDouble() ?? 0.0;
+
+      setState(() {
+        _selectedDriverId = resolvedDriverId;
+        _departureTime = DateTime.now();
+        _estimatedArrivalTime = _departureTime;
+        _durationBadge = '00:00:00';
+        _estimatedFarePhp = fareFromApi;
+        _etaSummary = 'Calculating ETA...';
+        _driverLocationSummary = 'Locating driver...';
+        _entryCardUid = cardUid;
+      });
+
+      final tapBalance = (tapInResult['current_balance'] as num?)?.toDouble();
+      final balanceText = tapBalance == null ? '' : ' • Balance ₱${tapBalance.toStringAsFixed(2)}';
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Entry granted for card $cardUid$balanceText'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+
+      await _refreshTripPreview(
+        driverId: resolvedDriverId,
+        stationId: _selectedStationId!,
       );
 
       if (mounted) {
@@ -93,9 +394,9 @@ class _PassengerDashboardState extends State<PassengerDashboard> {
           context,
           MaterialPageRoute(
             builder: (context) => PassengerMapScreen(
-              driverId: result['driver_id'] ?? 1, // Default to driver 1 if not specified
+              driverId: resolvedDriverId,
               stationId: _selectedStationId!,
-              rideId: result['ride_id'] ?? result['id'] ?? 1,
+              rideId: resolvedRideId,
             ),
           ),
         );
@@ -124,39 +425,57 @@ class _PassengerDashboardState extends State<PassengerDashboard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Map Section with Location Banner
+            // Google Map Section with Location Banner
             Stack(
               children: [
-                // Map placeholder
-                Container(
-                  height: 250,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    image: const DecorationImage(
-                      image: NetworkImage(
-                        'https://api.mapbox.com/styles/v1/mapbox/streets-v11/static/35.5018,33.8886,8,0/400x250?access_token=YOUR_MAPBOX_ACCESS_TOKEN',
-                      ),
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                  child: Stack(
-                    children: [
-                      // Map markers
-                      Positioned(
-                        top: 40,
-                        left: 80,
-                        child: _buildMapMarker('Lebanon', Colors.red),
-                      ),
-                      Positioned(
-                        top: 100,
-                        right: 60,
-                        child: _buildMapMarker('Damascus', Colors.blue),
-                      ),
-                    ],
-                  ),
+                // OpenStreetMap - No API key needed!
+                SizedBox(
+                  height: 300,
+                  child: _isLoadingMap
+                      ? Container(
+                          color: Colors.grey[300],
+                          child: const Center(
+                            child: CircularProgressIndicator(),
+                          ),
+                        )
+                      : FlutterMap(
+                          mapController: _mapController ??= MapController(),
+                          options: MapOptions(
+                            initialCenter: _currentPosition != null
+                                ? LatLng(_currentPosition!.latitude, _currentPosition!.longitude)
+                                : _defaultLocation,
+                            initialZoom: 14.0,
+                            minZoom: 5.0,
+                            maxZoom: 18.0,
+                          ),
+                          children: [
+                            TileLayer(
+                              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                              userAgentPackageName: 'com.peakmap.app',
+                            ),
+                            MarkerLayer(
+                              markers: [
+                                // Current location marker
+                                if (_currentPosition != null)
+                                  Marker(
+                                    width: 40,
+                                    height: 40,
+                                    point: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+                                    child: const Icon(
+                                      Icons.my_location,
+                                      color: Colors.blue,
+                                      size: 40,
+                                    ),
+                                  ),
+                                // Station markers
+                                ..._markers,
+                              ],
+                            ),
+                          ],
+                        ),
                 ),
                 // Enable location banner
-                if (_showLocationBanner)
+                if (_showLocationBanner && _currentPosition == null)
                   Positioned(
                     top: 20,
                     left: 20,
@@ -175,11 +494,11 @@ class _PassengerDashboardState extends State<PassengerDashboard> {
                             size: 20,
                           ),
                           const SizedBox(width: 12),
-                          const Expanded(
+                          Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
+                                const Text(
                                   'Enable live location',
                                   style: TextStyle(
                                     color: Colors.white,
@@ -187,9 +506,9 @@ class _PassengerDashboardState extends State<PassengerDashboard> {
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
-                                SizedBox(height: 2),
-                                Text(
-                                  'To have an up-to-date view on a bus and zoom',
+                                const SizedBox(height: 2),
+                                const Text(
+                                  'To see nearby stations and track buses',
                                   style: TextStyle(
                                     color: Colors.white70,
                                     fontSize: 11,
@@ -205,6 +524,58 @@ class _PassengerDashboardState extends State<PassengerDashboard> {
                                 _showLocationBanner = false;
                               });
                             },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                // Station info overlay (when station is selected)
+                if (_selectedStationName != null)
+                  Positioned(
+                    bottom: 20,
+                    left: 20,
+                    right: 20,
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.2),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.location_on,
+                            color: Colors.orange,
+                            size: 24,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Selected Station',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                                Text(
+                                  _selectedStationName!,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ),
@@ -230,7 +601,11 @@ class _PassengerDashboardState extends State<PassengerDashboard> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         // Departure
-                        _buildTimeInfo('10:49', 'Departure', 'Fri, 5 Dec'),
+                        _buildTimeInfo(
+                          _formatTime(_departureTime),
+                          'Departure',
+                          _formatDate(_departureTime),
+                        ),
                         // Duration badge
                         Container(
                           padding: const EdgeInsets.symmetric(
@@ -241,8 +616,8 @@ class _PassengerDashboardState extends State<PassengerDashboard> {
                             color: const Color(0xFFffd700),
                             borderRadius: BorderRadius.circular(20),
                           ),
-                          child: const Text(
-                            '01:59:42',
+                          child: Text(
+                            _durationBadge,
                             style: TextStyle(
                               color: Colors.black,
                               fontWeight: FontWeight.bold,
@@ -251,7 +626,11 @@ class _PassengerDashboardState extends State<PassengerDashboard> {
                           ),
                         ),
                         // Arrival
-                        _buildTimeInfo('14:49', 'Arrival', 'Fri, 5 Dec'),
+                        _buildTimeInfo(
+                          _formatTime(_estimatedArrivalTime),
+                          'Arrival',
+                          _formatDate(_estimatedArrivalTime),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 16),
@@ -266,7 +645,7 @@ class _PassengerDashboardState extends State<PassengerDashboard> {
                           width: 1,
                           color: Colors.white24,
                         ),
-                        _buildTripDetail('USD'),
+                        _buildTripDetail('$_phpCurrencyCode  ₱${_estimatedFarePhp.toStringAsFixed(2)}'),
                       ],
                     ),
                     const SizedBox(height: 20),
@@ -303,7 +682,7 @@ class _PassengerDashboardState extends State<PassengerDashboard> {
                             )
                           : const Icon(Icons.directions_bus),
                         label: Text(
-                          _isLoading ? 'Starting...' : '🚌 Track Bus',
+                          _isLoading ? 'Starting...' : '💳 Tap Card & Track Bus',
                         ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.green,
@@ -427,12 +806,18 @@ class _PassengerDashboardState extends State<PassengerDashboard> {
             // Trip Details
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                alignment: WrapAlignment.center,
                 children: [
-                  _buildDetailChip('BY-DAM-ALP', Icons.route),
-                  _buildDetailChip('30m', Icons.schedule),
-                  _buildDetailChip('2 stops', Icons.location_on),
+                  _buildDetailChip('Driver #${_selectedDriverId ?? '--'}', Icons.person_pin_circle),
+                  _buildDetailChip(_etaSummary, Icons.schedule),
+                  _buildDetailChip(_driverLocationSummary, Icons.location_on),
+                  _buildDetailChip(
+                    _entryCardUid == null ? 'Card not tapped' : 'Card $_entryCardUid',
+                    Icons.contactless,
+                  ),
                 ],
               ),
             ),
@@ -508,34 +893,6 @@ class _PassengerDashboardState extends State<PassengerDashboard> {
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildMapMarker(String label, Color color) {
-    return Column(
-      children: [
-        Icon(Icons.location_pin, color: color, size: 32),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(8),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.2),
-                blurRadius: 4,
-              ),
-            ],
-          ),
-          child: Text(
-            label,
-            style: const TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-      ],
     );
   }
 

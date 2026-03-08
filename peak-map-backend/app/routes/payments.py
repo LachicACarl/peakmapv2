@@ -598,6 +598,9 @@ def tap_in_passenger(payload: TapInPayload, db: Session = Depends(get_db)):
             }
 
         balance = _calculate_user_balance(db, payload.user_id)
+        
+        # Store card_uid in reference for matching on tap-out
+        card_uid = payload.card_uid or "UNKNOWN"
 
         tap_in = Payment(
             user_id=payload.user_id,
@@ -605,7 +608,7 @@ def tap_in_passenger(payload: TapInPayload, db: Session = Depends(get_db)):
             amount=0.0,
             method="tap_in_nfc",
             status="pending",  # pending = open trip
-            reference=f"TAPIN-{payload.user_id}-{payload.bus_id}-{payload.station_id}-{datetime.utcnow().timestamp()}",
+            reference=f"TAPIN-{card_uid}-{payload.user_id}-{payload.bus_id}-{payload.station_id}-{datetime.utcnow().timestamp()}",
             paid_at=None,
         )
 
@@ -666,16 +669,33 @@ def tap_out_passenger(payload: TapOutPayload, db: Session = Depends(get_db)):
                 "status": "no_open_trip",
             }
 
-        # Parse from-station from TAPIN reference format:
-        # TAPIN-{user_id}-{bus_id}-{station_id}-{timestamp}
+        # Parse from TAPIN reference format:
+        # TAPIN-{card_uid}-{user_id}-{bus_id}-{station_id}-{timestamp}
         from_station_id = None
+        tap_in_card_uid = None
         if open_trip.reference:
             ref_parts = open_trip.reference.split("-")
-            if len(ref_parts) >= 5:
+            if len(ref_parts) >= 6:
+                try:
+                    tap_in_card_uid = ref_parts[1]  # Extract card_uid from tap-in
+                    from_station_id = int(ref_parts[-2])
+                except (ValueError, IndexError):
+                    from_station_id = None
+            elif len(ref_parts) >= 5:  # Old format without card_uid
                 try:
                     from_station_id = int(ref_parts[-2])
                 except ValueError:
                     from_station_id = None
+        
+        # Verify the same card is being used for tap-out
+        if tap_in_card_uid and payload.card_uid and tap_in_card_uid != payload.card_uid:
+            return {
+                "success": False,
+                "error": f"Card mismatch! You tapped in with card {tap_in_card_uid} but tapping out with {payload.card_uid}",
+                "status": "card_mismatch",
+                "expected_card": tap_in_card_uid,
+                "provided_card": payload.card_uid,
+            }
 
         if from_station_id is None:
             return {
@@ -710,13 +730,15 @@ def tap_out_passenger(payload: TapOutPayload, db: Session = Depends(get_db)):
             }
 
         # Deduct fare
+        card_uid = payload.card_uid or tap_in_card_uid or "UNKNOWN"
+        
         fare_payment = Payment(
             user_id=payload.user_id,
             ride_id=0,
             amount=float(fare_amount),
             method="bus_fare_nfc",
             status="paid",
-            reference=f"BUSFARE-{payload.user_id}-{payload.bus_id}-{from_station_id}-{payload.station_id}-{datetime.utcnow().timestamp()}",
+            reference=f"BUSFARE-{card_uid}-{payload.user_id}-{payload.bus_id}-{from_station_id}-{payload.station_id}-{datetime.utcnow().timestamp()}",
             paid_at=datetime.utcnow(),
         )
 
@@ -727,7 +749,7 @@ def tap_out_passenger(payload: TapOutPayload, db: Session = Depends(get_db)):
             amount=0.0,
             method="tap_out_nfc",
             status="paid",
-            reference=f"TAPOUT-{payload.user_id}-{payload.bus_id}-{payload.station_id}-{datetime.utcnow().timestamp()}",
+            reference=f"TAPOUT-{card_uid}-{payload.user_id}-{payload.bus_id}-{payload.station_id}-{datetime.utcnow().timestamp()}",
             paid_at=datetime.utcnow(),
         )
 
@@ -749,6 +771,8 @@ def tap_out_passenger(payload: TapOutPayload, db: Session = Depends(get_db)):
             "user_id": payload.user_id,
             "bus_id": payload.bus_id,
             "driver_id": payload.driver_id,
+            "card_uid": card_uid,
+            "card_matched": tap_in_card_uid == payload.card_uid if (tap_in_card_uid and payload.card_uid) else True,
             "from_station_id": from_station_id,
             "to_station_id": payload.station_id,
             "fare_amount": float(fare_amount),

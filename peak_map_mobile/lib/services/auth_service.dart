@@ -1,9 +1,18 @@
+import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthService {
-  static const String baseUrl = 'http://127.0.0.1:8000';
+  static String get baseUrl {
+    if (kIsWeb) {
+      final host = Uri.base.host.isEmpty ? 'localhost' : Uri.base.host;
+      final scheme = Uri.base.scheme == 'https' ? 'https' : 'http';
+      return '$scheme://$host:8000';
+    }
+    return 'http://192.168.5.32:8000';
+  }
 
   static int? _parseUserId(dynamic raw) {
     if (raw is int) {
@@ -47,6 +56,8 @@ class AuthService {
     required String password,
     required String userType,
   }) async {
+    // ALWAYS use backend API for authentication (both passenger and driver)
+    // Backend handles Supabase auth + local fallback + rate limiting
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/auth/login'),
@@ -56,7 +67,7 @@ class AuthService {
           'password': password,
           'user_type': userType,
         }),
-      );
+      ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -68,51 +79,38 @@ class AuthService {
           };
         }
 
-        final resolvedUserType = (data['user_type'] ?? userType).toString();
-        final userId = _parseUserId(data['user_id']);
-        Map<String, dynamic>? driverData;
-
-        if (userId == null) {
-          return {
-            'success': false,
-            'message': 'Invalid user id returned by server',
-          };
-        }
-
-        if (resolvedUserType == 'driver') {
-          final profile = await _fetchDriverProfile(userId);
-          if (!(profile['success'] as bool)) {
-            return {
-              'success': false,
-              'message': profile['message'] ?? 'Failed to fetch driver profile',
-            };
-          }
-          driverData = (profile['data'] as Map).cast<String, dynamic>();
-        }
-        
-        // Save user session
+        // Save session
         await _saveSession(
-          userId: userId,
-          email: (data['email'] ?? email).toString(),
-          userType: resolvedUserType,
+          userId: data['user_id'] is String 
+            ? data['user_id'].hashCode 
+            : (data['user_id'] as int? ?? 0),
+          email: data['email'] ?? email,
+          userType: userType,
           token: data['token'] ?? '',
         );
-        
+
         return {
           'success': true,
-          'user_id': userId,
-          'email': (data['email'] ?? email).toString(),
-          'user_type': resolvedUserType,
+          'user_id': data['user_id'],
+          'supabase_user_id': data['supabase_user_id'],
+          'email': data['email'],
+          'user_type': data['user_type'] ?? userType,
+          'token': data['token'],
           'profile': data['profile'],
-          'driver_data': driverData,
-        };
-      } else {
-        final error = jsonDecode(response.body);
-        return {
-          'success': false,
-          'message': error['detail'] ?? 'Login failed',
+          'auth_method': data['auth_method'] ?? 'backend',
         };
       }
+
+      final error = jsonDecode(response.body);
+      return {
+        'success': false,
+        'message': error['detail'] ?? 'Authentication failed',
+      };
+    } on TimeoutException {
+      return {
+        'success': false,
+        'message': 'Connection timeout. Please check your network.',
+      };
     } catch (e) {
       print('Login error: $e');
       return {
@@ -130,6 +128,8 @@ class AuthService {
     String? name,
     String? phone,
   }) async {
+    // ALWAYS use backend API for registration (both passenger and driver)
+    // Backend handles Supabase registration + local fallback + rate limiting
     try {
       final normalizedName =
           (name != null && name.trim().isNotEmpty) ? name.trim() : email.split('@')[0];
@@ -148,25 +148,42 @@ class AuthService {
         Uri.parse('$baseUrl/auth/register'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(payload),
-      );
+      ).timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 201 || response.statusCode == 200) {
+        final data = jsonDecode(response.body);
         return {
           'success': true,
-          'message': 'Registration successful',
+          'message': data['message'] ?? 'Registration successful! Please login.',
+          'auth_method': data['auth_method'] ?? 'backend',
         };
       } else {
-        final error = jsonDecode(response.body);
+        String message = 'Registration failed (${response.statusCode})';
+        try {
+          final error = jsonDecode(response.body);
+          if (error is Map) {
+            message = (error['detail'] ?? error['message'] ?? message).toString();
+          }
+        } catch (_) {
+          if (response.body.trim().isNotEmpty) {
+            message = response.body;
+          }
+        }
         return {
           'success': false,
-          'message': error['detail'] ?? 'Registration failed',
+          'message': message,
         };
       }
+    } on TimeoutException {
+      return {
+        'success': false,
+        'message': 'Connection timeout. Please check your network.',
+      };
     } catch (e) {
       print('Registration error: $e');
       return {
         'success': false,
-        'message': 'Connection error. Please try again.',
+        'message': 'Connection error. Please check backend and try again.',
       };
     }
   }

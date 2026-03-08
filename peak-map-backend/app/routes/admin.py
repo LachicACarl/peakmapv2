@@ -9,6 +9,7 @@ from app.models.gps_log import GPSLog
 from app.models.payment import Payment
 from app.models.user import User
 from app.models.station import Station
+from app.services.driver_presence import get_driver_online_state
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -33,6 +34,19 @@ def _driver_display_name(driver: User) -> str:
         or getattr(driver, "full_name", None)
         or f"Driver {driver.id}"
     )
+
+
+def _is_driver_online(driver: User, gps: GPSLog | None, active_rides: int = 0) -> bool:
+    """Resolve online state from live toggle, GPS heartbeat, or active ride."""
+    presence_state = get_driver_online_state(driver.id)
+    if presence_state is not None:
+        return bool(presence_state)
+
+    has_recent_gps = bool(
+        gps and gps.timestamp and (datetime.utcnow() - gps.timestamp) < timedelta(minutes=1)
+    )
+    persisted_state = bool(getattr(driver, "is_online", False))
+    return persisted_state or has_recent_gps or active_rides > 0
 
 
 @router.get("/active_rides")
@@ -129,6 +143,8 @@ def get_all_drivers(db: Session = Depends(get_db)):
             .filter(Ride.status == "ongoing")
             .count()
         )
+
+        is_online = _is_driver_online(driver, gps, active_rides)
         
         driver_data.append({
             "driver_id": driver.id,
@@ -138,6 +154,7 @@ def get_all_drivers(db: Session = Depends(get_db)):
             "speed": gps.speed if gps else None,
             "last_update": gps.timestamp.isoformat() if gps else None,
             "active_rides": active_rides,
+            "is_online": is_online,
         })
     
     return driver_data
@@ -343,8 +360,25 @@ def get_dashboard_overview(db: Session = Depends(get_db)):
     # Active rides count
     active_rides = db.query(Ride).filter(Ride.status == "ongoing").count()
     
-    # Total drivers
-    total_drivers = db.query(User).filter(User.role == "driver").count()
+    # Drivers summary
+    drivers = db.query(User).filter(User.role == "driver").all()
+    total_drivers = len(drivers)
+    active_drivers = 0
+    for driver in drivers:
+        gps = (
+            db.query(GPSLog)
+            .filter(GPSLog.driver_id == driver.id)
+            .order_by(GPSLog.timestamp.desc())
+            .first()
+        )
+        active_rides_for_driver = (
+            db.query(Ride)
+            .filter(Ride.driver_id == driver.id)
+            .filter(Ride.status == "ongoing")
+            .count()
+        )
+        if _is_driver_online(driver, gps, active_rides_for_driver):
+            active_drivers += 1
     
     # Total passengers
     total_passengers = db.query(User).filter(User.role == "passenger").count()
@@ -364,6 +398,7 @@ def get_dashboard_overview(db: Session = Depends(get_db)):
     
     return {
         "active_rides": active_rides,
+        "active_drivers": active_drivers,
         "total_drivers": total_drivers,
         "total_passengers": total_passengers,
         "total_revenue": total_revenue,

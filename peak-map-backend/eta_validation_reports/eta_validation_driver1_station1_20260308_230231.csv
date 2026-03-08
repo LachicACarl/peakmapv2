@@ -1,0 +1,2 @@
+timestamp_iso,elapsed_seconds,eta_minutes,eta_text,stops_remaining,current_station,destination_station,bus_latitude,bus_longitude,distance_to_station_m
+2026-03-08T23:02:31,0.0,0.0,Arrived,0,Monumento,,14.6542,120.9844,0.0

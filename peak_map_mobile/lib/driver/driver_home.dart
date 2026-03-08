@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'driver_dashboard.dart';
+import 'driver_map.dart';
 import 'driver_routes.dart';
 import 'driver_about.dart';
 
@@ -24,6 +25,7 @@ class _DriverHomeState extends State<DriverHome> {
   Widget build(BuildContext context) {
     final List<Widget> screens = [
       DriverDashboard(driverId: widget.driverId),
+      DriverMapScreen(driverId: widget.driverId),
       DriverRoutes(driverId: widget.driverId),
       DriverAbout(driverId: widget.driverId, email: widget.email),
     ];
@@ -69,6 +71,11 @@ class _DriverHomeState extends State<DriverHome> {
                 icon: Icon(Icons.home_outlined),
                 activeIcon: Icon(Icons.home),
                 label: 'Home',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.map_outlined),
+                activeIcon: Icon(Icons.map),
+                label: 'GPS Map',
               ),
               BottomNavigationBarItem(
                 icon: Icon(Icons.route_outlined),

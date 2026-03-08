@@ -8,8 +8,8 @@ class ApiService {
   // Backend URL - dynamically set based on environment
   static String get baseUrl {
     try {
-      // For web: use localhost with port 8000
-      return 'http://localhost:8000';
+      // For physical mobile device: use computer's local network IP
+      return 'http://192.168.5.32:8000';
     } catch (e) {
       // Fallback for Android emulator
       return 'http://10.0.2.2:8000';
@@ -186,6 +186,24 @@ class ApiService {
       throw Exception("Error getting stations: $e");
     }
   }
+
+  /// Get card owner and current balance by card UID
+  static Future<Map<String, dynamic>> getCardTapInfo(String cardUid) async {
+    try {
+      final encodedUid = Uri.encodeComponent(cardUid.trim());
+      final response = await http.get(
+        Uri.parse('$baseUrl/rfid/cards/tap/$encodedUid'),
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        throw Exception('Failed to get card info: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error getting card info: $e');
+    }
+  }
   
   /// Initiate payment for a ride
   static Future<Map<String, dynamic>> initiatePayment({
@@ -334,6 +352,45 @@ class ApiService {
       throw Exception("Error creating ride: $e");
     }
   }
+
+  /// Tap in passenger on bus entry via NFC/RFID card
+  static Future<Map<String, dynamic>> tapInPassenger({
+    required String userId,
+    required String busId,
+    required String driverId,
+    required int stationId,
+    String? cardUid,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/payments/tap-in'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'user_id': userId,
+          'bus_id': busId,
+          'driver_id': driverId,
+          'station_id': stationId,
+          'card_uid': cardUid,
+        }),
+      );
+
+      final payload = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        return payload;
+      }
+
+      if (payload is Map<String, dynamic>) {
+        return {
+          'success': false,
+          ...payload,
+        };
+      }
+
+      throw Exception('Failed to tap in: ${response.statusCode}');
+    } catch (e) {
+      throw Exception('Error tapping in passenger: $e');
+    }
+  }
   
   /// Get driver's active rides
   static Future<List<dynamic>> getDriverRides(int driverId) async {
@@ -397,6 +454,23 @@ class ApiService {
       }
     } catch (e) {
       throw Exception("Error getting alerts: $e");
+    }
+  }
+
+  /// Get current passenger count for driver (from Supabase tap-in/tap-out)
+  static Future<Map<String, dynamic>> getDriverPassengerCount(int driverId) async {
+    try {
+      final response = await http.get(
+        Uri.parse("$baseUrl/drivers/$driverId/passenger-count"),
+      );
+      
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        throw Exception("Failed to get passenger count: ${response.statusCode}");
+      }
+    } catch (e) {
+      throw Exception("Error getting passenger count: $e");
     }
   }
 

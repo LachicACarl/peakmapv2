@@ -22,6 +22,7 @@
 
   <!-- iOS meta tags & icons -->
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="peak_map_mobile">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
@@ -32,15 +33,42 @@
   <title>peak_map_mobile</title>
   <link rel="manifest" href="manifest.json">
 
-  <!-- Google Maps JavaScript API -->
-  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDummy_Replace_With_Your_Key"></script>
-
   <script>
     // The value below is injected by flutter build, do not touch.
     const serviceWorkerVersion = null;
   </script>
   <!-- This script adds the flutter initialization JS code -->
   <script src="flutter.js" defer></script>
+
+  <script>
+    // Suppress non-critical browser warnings that don't affect functionality
+    const originalWarn = console.warn;
+    console.warn = function(...args) {
+      const message = args[0]?.toString() || '';
+      
+      // Suppress Intl deprecation warnings (using Intl.Segmenter instead of v8BreakIterator)
+      if (message.includes('Intl.v8BreakIterator') || 
+          message.includes('Intl.Segmenter') ||
+          message.includes('deprecated')) {
+        return;
+      }
+      
+      // Suppress session history manipulation warnings from Flutter navigation
+      if (message.includes('Session History') || 
+          message.includes('history items will be skipped') ||
+          message.includes('history manipulation intervention')) {
+        return;
+      }
+      
+      // Suppress deprecation warnings for mobile-web-app-capable
+      if (message.includes('apple-mobile-web-app-capable')) {
+        return;
+      }
+      
+      // For other warnings, call the original console.warn
+      return originalWarn.apply(console, args);
+    };
+  </script>
 </head>
 <body>
   <script>

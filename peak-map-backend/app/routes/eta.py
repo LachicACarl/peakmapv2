@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.gps_log import GPSLog
 from app.models.station import Station
-from app.services.eta_service import calculate_eta
+from app.services.eta_calculator import calculate_eta_minutes, calculate_eta_for_ride
 
 router = APIRouter(prefix="/eta", tags=["ETA"])
 
@@ -13,7 +13,7 @@ router = APIRouter(prefix="/eta", tags=["ETA"])
 def get_eta(driver_id: int, station_id: int, db: Session = Depends(get_db)):
     """
     Calculate ETA from driver's current location to a station
-    Uses real-time traffic data from Google Maps
+    Uses EDSA Bus Carousel route segments for accurate calculation
     """
     # Get driver's latest GPS location
     gps = (
@@ -32,16 +32,17 @@ def get_eta(driver_id: int, station_id: int, db: Session = Depends(get_db)):
     if not station:
         return {"error": "Station not found"}
 
-    # Calculate ETA using Google Maps
-    eta = calculate_eta(
+    # Calculate ETA using route segments
+    eta_data = calculate_eta_minutes(
         gps.latitude,
         gps.longitude,
-        station.latitude,
-        station.longitude
+        station_id,
+        db,
+        traffic_factor=1.0  # Can be adjusted based on time of day
     )
 
     return {
-        **eta,
+        **eta_data,
         "driver_id": driver_id,
         "station_id": station_id,
         "station_name": station.name,
@@ -52,3 +53,17 @@ def get_eta(driver_id: int, station_id: int, db: Session = Depends(get_db)):
             "last_update": str(gps.timestamp)
         }
     }
+
+
+@router.get("/ride/{ride_id}")
+def get_ride_eta(ride_id: int, db: Session = Depends(get_db)):
+    """
+    Calculate ETA for a specific ride
+    Returns estimated time to passenger's destination
+    """
+    eta_data = calculate_eta_for_ride(ride_id, db)
+    
+    if "error" in eta_data:
+        raise HTTPException(status_code=404, detail=eta_data["error"])
+    
+    return eta_data

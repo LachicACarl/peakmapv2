@@ -1,0 +1,340 @@
+{
+  "route_name": "EDSA Carousel",
+  "description": "Main rapid transit bus route connecting PITX to Monumento via EDSA",
+  "north_bound_stations": [
+    {
+      "sequence": 1,
+      "name": "PITX",
+      "location": "City of Dreams, Parañaque City",
+      "latitude": 14.5194,
+      "longitude": 120.8817,
+      "fare_zone": 1
+    },
+    {
+      "sequence": 2,
+      "name": "DFA - Office of Consular Affairs",
+      "location": "Diosdado Macapagal Blvd., Lungsod ng Pasay",
+      "latitude": 14.5450,
+      "longitude": 120.8867,
+      "fare_zone": 1
+    },
+    {
+      "sequence": 3,
+      "name": "Roxas Blvd Eastbound",
+      "location": "EDSA, Pasay City",
+      "latitude": 14.5550,
+      "longitude": 120.9050,
+      "fare_zone": 2
+    },
+    {
+      "sequence": 4,
+      "name": "Taft Median Bus Stop (Eastbound)",
+      "location": "EDSA, Makati City",
+      "latitude": 14.5660,
+      "longitude": 120.9180,
+      "fare_zone": 2
+    },
+    {
+      "sequence": 5,
+      "name": "MRT-3 Ayala Station",
+      "location": "EDSA, Makati City",
+      "latitude": 14.5670,
+      "longitude": 120.9200,
+      "fare_zone": 2
+    },
+    {
+      "sequence": 6,
+      "name": "EDSA Carousel Buendia Median Stop",
+      "location": "EDSA, Makati City",
+      "latitude": 14.5712,
+      "longitude": 120.9250,
+      "fare_zone": 2
+    },
+    {
+      "sequence": 7,
+      "name": "EDSA Guadalupe Median Stop",
+      "location": "EDSA, Makati City",
+      "latitude": 14.5800,
+      "longitude": 120.9300,
+      "fare_zone": 3
+    },
+    {
+      "sequence": 8,
+      "name": "EDSA Ortigas Median Stop",
+      "location": "EDSA, Pasig City",
+      "latitude": 14.5850,
+      "longitude": 120.9350,
+      "fare_zone": 3
+    },
+    {
+      "sequence": 9,
+      "name": "MRT Santolan-Annapolis Median Stop",
+      "location": "EDSA, Pasig City",
+      "latitude": 14.5900,
+      "longitude": 120.9400,
+      "fare_zone": 3
+    },
+    {
+      "sequence": 10,
+      "name": "Main Ave. Median Stop",
+      "location": "EDSA, Quezon City",
+      "latitude": 14.5950,
+      "longitude": 120.9450,
+      "fare_zone": 3
+    },
+    {
+      "sequence": 11,
+      "name": "EDSA Nepa Q-Mart Median Stop",
+      "location": "EDSA, Quezon City",
+      "latitude": 14.6000,
+      "longitude": 120.9500,
+      "fare_zone": 3
+    },
+    {
+      "sequence": 12,
+      "name": "Kamuning Median Stop",
+      "location": "EDSA, Quezon City",
+      "latitude": 14.6050,
+      "longitude": 120.9550,
+      "fare_zone": 4
+    },
+    {
+      "sequence": 13,
+      "name": "EDSA Quezon Ave. Median Stop",
+      "location": "EDSA, Quezon City",
+      "latitude": 14.6100,
+      "longitude": 120.9580,
+      "fare_zone": 4
+    },
+    {
+      "sequence": 14,
+      "name": "Philam Median Stop",
+      "location": "EDSA, Quezon City",
+      "latitude": 14.6150,
+      "longitude": 120.9600,
+      "fare_zone": 4
+    },
+    {
+      "sequence": 15,
+      "name": "North Avenue Median Stop",
+      "location": "EDSA, Quezon City",
+      "latitude": 14.6200,
+      "longitude": 120.9620,
+      "fare_zone": 4
+    },
+    {
+      "sequence": 16,
+      "name": "EDSA Munoz Median Stop",
+      "location": "EDSA, Quezon City",
+      "latitude": 14.6250,
+      "longitude": 120.9650,
+      "fare_zone": 4
+    },
+    {
+      "sequence": 17,
+      "name": "Balintawak LRT 1",
+      "location": "Epifanio de los Santos Ave., Quezon City",
+      "latitude": 14.6300,
+      "longitude": 120.9680,
+      "fare_zone": 5
+    },
+    {
+      "sequence": 18,
+      "name": "Bagong Barrio, Caloocan Median Stop",
+      "location": "EDSA, Caloocan City",
+      "latitude": 14.6350,
+      "longitude": 120.9700,
+      "fare_zone": 5
+    },
+    {
+      "sequence": 19,
+      "name": "MCU Median Stop, Monumento",
+      "location": "EDSA, Caloocan City",
+      "latitude": 14.6400,
+      "longitude": 120.9720,
+      "fare_zone": 5
+    }
+  ],
+  "south_bound_stations": [
+    {
+      "sequence": 1,
+      "name": "MCU Median Stop, Monumento",
+      "location": "EDSA, Caloocan City",
+      "latitude": 14.6400,
+      "longitude": 120.9720,
+      "fare_zone": 5
+    },
+    {
+      "sequence": 2,
+      "name": "Bagong Barrio, Caloocan Median Stop",
+      "location": "EDSA, Caloocan City",
+      "latitude": 14.6350,
+      "longitude": 120.9700,
+      "fare_zone": 5
+    },
+    {
+      "sequence": 3,
+      "name": "Kaingin Road Bus Stop",
+      "location": "Epifanio de los Santos Ave., Quezon City",
+      "latitude": 14.6300,
+      "longitude": 120.9680,
+      "fare_zone": 5
+    },
+    {
+      "sequence": 4,
+      "name": "EDSA Munoz Median Stop",
+      "location": "EDSA, Quezon City",
+      "latitude": 14.6250,
+      "longitude": 120.9650,
+      "fare_zone": 4
+    },
+    {
+      "sequence": 5,
+      "name": "North Avenue Median Stop",
+      "location": "EDSA, Quezon City",
+      "latitude": 14.6200,
+      "longitude": 120.9620,
+      "fare_zone": 4
+    },
+    {
+      "sequence": 6,
+      "name": "Philam Median Stop",
+      "location": "EDSA, Quezon City",
+      "latitude": 14.6150,
+      "longitude": 120.9600,
+      "fare_zone": 4
+    },
+    {
+      "sequence": 7,
+      "name": "EDSA Quezon Ave. Median Stop",
+      "location": "EDSA, Quezon City",
+      "latitude": 14.6100,
+      "longitude": 120.9580,
+      "fare_zone": 4
+    },
+    {
+      "sequence": 8,
+      "name": "Kamuning Median Stop",
+      "location": "EDSA, Quezon City",
+      "latitude": 14.6050,
+      "longitude": 120.9550,
+      "fare_zone": 4
+    },
+    {
+      "sequence": 9,
+      "name": "EDSA Nepa Q-Mart Median Stop",
+      "location": "EDSA, Quezon City",
+      "latitude": 14.6000,
+      "longitude": 120.9500,
+      "fare_zone": 3
+    },
+    {
+      "sequence": 10,
+      "name": "Main Ave. Median Stop",
+      "location": "EDSA, Quezon City",
+      "latitude": 14.5950,
+      "longitude": 120.9450,
+      "fare_zone": 3
+    },
+    {
+      "sequence": 11,
+      "name": "MRT Santolan-Annapolis Median Stop",
+      "location": "EDSA, Pasig City",
+      "latitude": 14.5900,
+      "longitude": 120.9400,
+      "fare_zone": 3
+    },
+    {
+      "sequence": 12,
+      "name": "EDSA Ortigas Median Stop",
+      "location": "EDSA, Pasig City",
+      "latitude": 14.5850,
+      "longitude": 120.9350,
+      "fare_zone": 3
+    },
+    {
+      "sequence": 13,
+      "name": "EDSA Guadalupe Median Stop",
+      "location": "EDSA, Makati City",
+      "latitude": 14.5800,
+      "longitude": 120.9300,
+      "fare_zone": 3
+    },
+    {
+      "sequence": 14,
+      "name": "EDSA Carousel Buendia Median Stop",
+      "location": "EDSA, Makati City",
+      "latitude": 14.5712,
+      "longitude": 120.9250,
+      "fare_zone": 2
+    },
+    {
+      "sequence": 15,
+      "name": "One Ayala Terminal",
+      "location": "EDSA, Makati City",
+      "latitude": 14.5680,
+      "longitude": 120.9220,
+      "fare_zone": 2
+    },
+    {
+      "sequence": 16,
+      "name": "Tramo Carousel Station",
+      "location": "EDSA, Makati City",
+      "latitude": 14.5670,
+      "longitude": 120.9200,
+      "fare_zone": 2
+    },
+    {
+      "sequence": 17,
+      "name": "Taft Median Bus Stop (Westbound)",
+      "location": "EDSA, Makati City",
+      "latitude": 14.5660,
+      "longitude": 120.9180,
+      "fare_zone": 2
+    },
+    {
+      "sequence": 18,
+      "name": "Roxas Blvd Westbound",
+      "location": "EDSA, Pasay City",
+      "latitude": 14.5550,
+      "longitude": 120.9050,
+      "fare_zone": 2
+    },
+    {
+      "sequence": 19,
+      "name": "SM Mall of Asia",
+      "location": "Pasay City",
+      "latitude": 14.5380,
+      "longitude": 120.8950,
+      "fare_zone": 1
+    },
+    {
+      "sequence": 20,
+      "name": "Ayala Malls By the Bay Terminal",
+      "location": "Pasay City",
+      "latitude": 14.5300,
+      "longitude": 120.8900,
+      "fare_zone": 1
+    },
+    {
+      "sequence": 21,
+      "name": "PITX",
+      "location": "City of Dreams, Parañaque City",
+      "latitude": 14.5194,
+      "longitude": 120.8817,
+      "fare_zone": 1
+    }
+  ],
+  "fare_matrix": {
+    "1_to_2": 15.50,
+    "1_to_3": 18.00,
+    "1_to_4": 20.50,
+    "1_to_5": 24.50,
+    "2_to_3": 15.50,
+    "2_to_4": 18.00,
+    "2_to_5": 22.00,
+    "3_to_4": 15.50,
+    "3_to_5": 18.00,
+    "4_to_5": 15.50
+  }
+}

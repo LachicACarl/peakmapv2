@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PEAK MAP - Admin Dashboard</title>
+    <!-- Leaflet CSS for OpenStreetMap -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
         * {
             margin: 0;
@@ -508,6 +511,33 @@
             transition: width 0.3s;
         }
 
+        .ride-stats-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn-export {
+            border: none;
+            background: #7AAACE;
+            color: white;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn-export:hover {
+            background: #355872;
+        }
+
+        .ride-chart-wrap {
+            position: relative;
+            height: 260px;
+            margin-bottom: 16px;
+        }
+
         @media (max-width: 1200px) {
             .main-content {
                 grid-template-columns: 1fr;
@@ -603,6 +633,30 @@
             font-size: 12px;
             color: #999;
         }
+
+        /* Custom Leaflet popup styling */
+        .leaflet-popup-content-wrapper {
+            border-radius: 12px;
+            padding: 0;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+        }
+
+        .leaflet-popup-content {
+            margin: 0;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .leaflet-popup-tip {
+            box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+        }
+
+        /* Responsive map height */
+        @media (max-width: 768px) {
+            #map {
+                height: 400px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -662,13 +716,84 @@
         <!-- Main Content: Map + Sidebar -->
         <div class="main-content">
             <!-- Live Map -->
-            <div class="map-container">
+            <div class="map-container" style="position: relative;">
                 <div class="map-header">
                     📍 Live Driver Tracking
                 </div>
                 <div id="map"></div>
+                
+                <!-- Map Legend Overlay -->
+                <div style="
+                    position: absolute;
+                    bottom: 30px;
+                    right: 20px;
+                    background: white;
+                    padding: 15px;
+                    border-radius: 12px;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+                    z-index: 1000;
+                    min-width: 180px;
+                ">
+                    <div style="
+                        font-weight: 700;
+                        font-size: 13px;
+                        color: #333;
+                        margin-bottom: 10px;
+                        border-bottom: 2px solid #E0E0E0;
+                        padding-bottom: 6px;
+                    ">📌 Map Legend</div>
+                    
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <!-- Active Driver -->
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="
+                                width: 24px;
+                                height: 24px;
+                                background: linear-gradient(135deg, #4CAF50 0%, #388E3C 100%);
+                                border-radius: 50%;
+                                border: 2px solid white;
+                                box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                                font-size: 12px;
+                            ">🚌</div>
+                            <span style="font-size: 11px; color: #333;">Active Driver</span>
+                        </div>
+                        
+                        <!-- Idle Driver -->
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="
+                                width: 24px;
+                                height: 24px;
+                                background: linear-gradient(135deg, #7AAACE 0%, #355872 100%);
+                                border-radius: 50%;
+                                border: 2px solid white;
+                                box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                                font-size: 12px;
+                            ">🚌</div>
+                            <span style="font-size: 11px; color: #333;">Idle Driver</span>
+                        </div>
+                        
+                        <!-- Pulse indicator -->
+                        <div style="
+                            margin-top: 6px;
+                            padding-top: 6px;
+                            border-top: 1px solid #E0E0E0;
+                            font-size: 10px;
+                            color: #666;
+                            font-style: italic;
+                        ">
+                            💚 Pulse = Real-time active
+                        </div>
+                    </div>
+                </div>
+                
                 <div id="mapError" class="map-error" style="display: none;">
-                    Map failed to load. Please check your Google Maps API key and network access.
+                    Map failed to load. Please check your network connection.
                 </div>
             </div>
 
@@ -708,8 +833,17 @@
         <div class="bottom-section">
             <!-- Ride Statistics -->
             <div class="card">
-                <div class="card-header">📊 Ride Statistics</div>
+                <div class="card-header">
+                    <span class="card-header-title">📊 Ride Statistics (Tap-In/Tap-Out)</span>
+                    <div class="ride-stats-actions">
+                        <button type="button" class="btn-export" onclick="downloadRideStatsPdf()">Download PDF</button>
+                        <button type="button" class="btn-export" onclick="downloadRideStatsExcel()">Download Excel</button>
+                    </div>
+                </div>
                 <div class="card-content">
+                    <div class="ride-chart-wrap">
+                        <canvas id="rideStatsChart"></canvas>
+                    </div>
                     <table class="ride-stats-table">
                         <thead>
                             <tr>
@@ -768,6 +902,17 @@
         let driverMarkers = {};
         let ws;
         let dashboardServicesStarted = false;
+        let rideStatsChart = null;
+        let latestRideStatsRows = [];
+        let latestRideStatsDatasetLabel = 'Ride Count';
+
+        const RIDE_STATUS_FALLBACK = [
+            { key: 'ongoing', label: 'Ongoing', color: '#355872' },
+            { key: 'completed', label: 'Completed', color: '#7AAACE' },
+            { key: 'dropped', label: 'Dropped', color: '#FF9800' },
+            { key: 'missed', label: 'Missed', color: '#F44336' },
+            { key: 'cancelled', label: 'Cancelled', color: '#9E9E9E' }
+        ];
 
         function startDashboardServices() {
             if (dashboardServicesStarted) {
@@ -794,24 +939,35 @@
             startDashboardServices();
         }
 
-        // Initialize Google Map
+        // Initialize Leaflet Map (OpenStreetMap - no API key needed)
         function initMap() {
-            if (!window.google || !google.maps) {
-                handleMapLoadError();
-                return;
-            }
-            map = new google.maps.Map(document.getElementById('map'), {
-                center: { lat: 14.5547, lng: 121.0244 }, // EDSA default
+            // Create map with enhanced controls
+            map = L.map('map', {
+                center: [14.5547, 121.0244], // EDSA center default
                 zoom: 13,
-                styles: [
-                    {
-                        featureType: "poi",
-                        elementType: "labels",
-                        stylers: [{ visibility: "off" }]
-                    }
-                ]
+                zoomControl: true,
+                attributionControl: true,
+                scrollWheelZoom: true,
+                doubleClickZoom: true,
+                touchZoom: true,
+                dragging: true
             });
-
+            
+            // Add OpenStreetMap tiles with enhanced attribution
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                minZoom: 10,
+                attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                className: 'map-tiles'
+            }).addTo(map);
+            
+            // Add scale control
+            L.control.scale({
+                position: 'bottomleft',
+                imperial: false,
+                metric: true
+            }).addTo(map);
+            
             startDashboardServices();
         }
 
@@ -830,8 +986,8 @@
                 const paymentsByMethod = await fetch(`${API_BASE}/admin/payments_by_method`).then(r => r.json());
                 updatePaymentBreakdown(paymentsByMethod);
 
-                // Fetch ride stats
-                const rideStats = await fetch(`${API_BASE}/admin/rides_stats`).then(r => r.json());
+                // Fetch ride stats (tap-in/tap-out first, then fallback)
+                const rideStats = await fetchRideStatsSummary();
                 updateRideStats(rideStats);
 
                 // Fetch recent activity
@@ -847,62 +1003,225 @@
             }
         }
 
+        async function fetchRideStatsSummary() {
+            try {
+                const tapResponse = await fetch(`${API_BASE}/rfid/entry-exit?limit=1`);
+                const tapPayload = await tapResponse.json();
+
+                if (tapResponse.ok && tapPayload.success) {
+                    const entryCount = Number(tapPayload.entry_count || 0);
+                    const exitCount = Number(tapPayload.exit_count || 0);
+                    const openTrips = Math.max(entryCount - exitCount, 0);
+
+                    return {
+                        source: 'tap_flow',
+                        entry_count: entryCount,
+                        exit_count: exitCount,
+                        open_trips: openTrips,
+                        total_taps: entryCount + exitCount,
+                    };
+                }
+            } catch (error) {
+                console.warn('Tap flow stats unavailable, fallback to /admin/rides_stats', error);
+            }
+
+            const legacy = await fetch(`${API_BASE}/admin/rides_stats`).then(r => r.json());
+            return {
+                source: 'legacy',
+                ...legacy,
+            };
+        }
+
         // Update overview stats
         function updateOverview(data) {
             document.getElementById('totalRevenue').textContent = `₱${data.total_revenue.toFixed(2)}`;
             document.getElementById('activeRides').textContent = data.active_rides;
-            document.getElementById('activeDrivers').textContent = data.total_drivers;
+            document.getElementById('activeDrivers').textContent = data.active_drivers ?? data.total_drivers;
             document.getElementById('pendingRevenue').textContent = `₱${data.pending_revenue.toFixed(2)}`;
         }
 
         // Update driver markers on map
         function updateDriverMarkers(rides) {
-            if (!map || !window.google || !google.maps) {
+            if (!map) {
                 return;
             }
 
             // Clear existing markers
-            Object.values(driverMarkers).forEach(marker => marker.setMap(null));
+            Object.values(driverMarkers).forEach(marker => marker.remove());
             driverMarkers = {};
 
-            // Add new markers
+            // Add new markers with improved design using Leaflet
             rides.forEach(ride => {
                 if (ride.driver_lat && ride.driver_lng) {
-                    const marker = new google.maps.Marker({
-                        position: { lat: ride.driver_lat, lng: ride.driver_lng },
-                        map: map,
-                        title: `Driver ${ride.driver_id}`,
-                        icon: {
-                            path: google.maps.SymbolPath.CIRCLE,
-                            scale: 10,
-                            fillColor: ride.status === 'ongoing' ? '#355872' : '#7AAACE',
-                            fillOpacity: 1,
-                            strokeColor: '#fff',
-                            strokeWeight: 2
-                        },
-                        label: {
-                            text: `${ride.driver_id}`,
-                            color: '#fff',
-                            fontSize: '12px',
-                            fontWeight: 'bold'
-                        }
-                    });
-
-                    const infoWindow = new google.maps.InfoWindow({
-                        content: `
-                            <div style="padding: 10px;">
-                                <h3>Driver ID: ${ride.driver_id}</h3>
-                                <p><strong>Ride ID:</strong> ${ride.ride_id}</p>
-                                <p><strong>Status:</strong> ${ride.status}</p>
-                                <p><strong>Fare:</strong> ₱${ride.fare_amount ? ride.fare_amount.toFixed(2) : 'N/A'}</p>
-                                <p><strong>Speed:</strong> ${ride.driver_speed ? ride.driver_speed.toFixed(1) : '0'} m/s</p>
+                    // Determine marker color based on status
+                    const isActive = ride.status === 'ongoing';
+                    const markerColor = isActive ? '#4CAF50' : '#7AAACE';
+                    const borderColor = isActive ? '#388E3C' : '#355872';
+                    
+                    // Create enhanced custom icon for driver
+                    const customIcon = L.divIcon({
+                        html: `
+                            <div style="position: relative;">
+                                <!-- Pulse animation for active drivers -->
+                                ${isActive ? `
+                                <div style="
+                                    position: absolute;
+                                    width: 60px;
+                                    height: 60px;
+                                    left: -10px;
+                                    top: -10px;
+                                    background-color: ${markerColor};
+                                    opacity: 0.3;
+                                    border-radius: 50%;
+                                    animation: pulse 2s infinite;
+                                "></div>
+                                ` : ''}
+                                
+                                <!-- Main marker -->
+                                <div style="
+                                    background: linear-gradient(135deg, ${markerColor} 0%, ${borderColor} 100%);
+                                    color: white;
+                                    border: 3px solid white;
+                                    border-radius: 50%;
+                                    width: 48px;
+                                    height: 48px;
+                                    display: flex;
+                                    flex-direction: column;
+                                    align-items: center;
+                                    justify-content: center;
+                                    font-weight: bold;
+                                    font-size: 12px;
+                                    text-align: center;
+                                    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+                                    position: relative;
+                                ">
+                                    <div style="font-size: 16px;">🚌</div>
+                                    <div style="font-size: 10px; margin-top: -2px;">D${ride.driver_id}</div>
+                                </div>
+                                
+                                <!-- Status badge -->
+                                <div style="
+                                    position: absolute;
+                                    bottom: -8px;
+                                    left: 50%;
+                                    transform: translateX(-50%);
+                                    background: ${isActive ? '#4CAF50' : '#9E9E9E'};
+                                    color: white;
+                                    padding: 2px 6px;
+                                    border-radius: 8px;
+                                    font-size: 9px;
+                                    font-weight: bold;
+                                    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+                                    white-space: nowrap;
+                                ">${isActive ? 'ACTIVE' : 'IDLE'}</div>
                             </div>
-                        `
+                            
+                            <style>
+                                @keyframes pulse {
+                                    0%, 100% {
+                                        transform: scale(1);
+                                        opacity: 0.3;
+                                    }
+                                    50% {
+                                        transform: scale(1.3);
+                                        opacity: 0;
+                                    }
+                                }
+                            </style>
+                        `,
+                        iconSize: [48, 48],
+                        iconAnchor: [24, 24],
+                        popupAnchor: [0, -30]
                     });
 
-                    marker.addListener('click', () => {
-                        infoWindow.open(map, marker);
-                    });
+                    // Enhanced popup content
+                    const popupContent = `
+                        <div style="
+                            padding: 12px;
+                            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                            min-width: 220px;
+                        ">
+                            <div style="
+                                display: flex;
+                                align-items: center;
+                                margin-bottom: 12px;
+                                padding-bottom: 10px;
+                                border-bottom: 2px solid ${markerColor};
+                            ">
+                                <div style="
+                                    font-size: 28px;
+                                    margin-right: 10px;
+                                ">🚌</div>
+                                <div>
+                                    <h3 style="
+                                        margin: 0;
+                                        font-size: 16px;
+                                        color: ${borderColor};
+                                        font-weight: 700;
+                                    ">Driver #${ride.driver_id}</h3>
+                                    <div style="
+                                        font-size: 11px;
+                                        color: ${isActive ? '#4CAF50' : '#9E9E9E'};
+                                        font-weight: 600;
+                                        margin-top: 2px;
+                                    ">● ${isActive ? 'ACTIVE RIDE' : 'IDLE'}</div>
+                                </div>
+                            </div>
+                            
+                            <div style="display: grid; grid-template-columns: 1fr; gap: 8px;">
+                                <div style="
+                                    background: #F5F5F5;
+                                    padding: 8px;
+                                    border-radius: 6px;
+                                    display: flex;
+                                    justify-content: space-between;
+                                ">
+                                    <span style="color: #666; font-size: 12px; font-weight: 500;">📋 Ride ID:</span>
+                                    <span style="font-weight: 700; font-size: 12px; color: #333;">#${ride.ride_id}</span>
+                                </div>
+                                
+                                <div style="
+                                    background: #F5F5F5;
+                                    padding: 8px;
+                                    border-radius: 6px;
+                                    display: flex;
+                                    justify-content: space-between;
+                                ">
+                                    <span style="color: #666; font-size: 12px; font-weight: 500;">💰 Fare:</span>
+                                    <span style="font-weight: 700; font-size: 12px; color: #4CAF50;">₱${ride.fare_amount ? ride.fare_amount.toFixed(2) : '0.00'}</span>
+                                </div>
+                                
+                                <div style="
+                                    background: #F5F5F5;
+                                    padding: 8px;
+                                    border-radius: 6px;
+                                    display: flex;
+                                    justify-content: space-between;
+                                ">
+                                    <span style="color: #666; font-size: 12px; font-weight: 500;">⚡ Speed:</span>
+                                    <span style="font-weight: 700; font-size: 12px; color: #2196F3;">${ride.driver_speed ? ride.driver_speed.toFixed(1) : '0.0'} m/s</span>
+                                </div>
+                                
+                                <div style="
+                                    background: #F5F5F5;
+                                    padding: 8px;
+                                    border-radius: 6px;
+                                    font-size: 10px;
+                                    color: #666;
+                                    text-align: center;
+                                ">
+                                    📍 ${ride.driver_lat.toFixed(5)}, ${ride.driver_lng.toFixed(5)}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+
+                    const marker = L.marker([ride.driver_lat, ride.driver_lng], { icon: customIcon })
+                        .addTo(map)
+                        .bindPopup(popupContent, {
+                            maxWidth: 300,
+                            className: 'custom-popup'
+                        });
 
                     driverMarkers[ride.driver_id] = marker;
                 }
@@ -934,35 +1253,242 @@
 
         // Update ride statistics
         function updateRideStats(data) {
-            const total = data.total_rides || 1;
-            const statuses = [
-                { key: 'ongoing', label: 'Ongoing' },
-                { key: 'completed', label: 'Completed' },
-                { key: 'dropped', label: 'Dropped' },
-                { key: 'missed', label: 'Missed' },
-                { key: 'cancelled', label: 'Cancelled' }
-            ];
+            const isTapFlowStats = data?.source === 'tap_flow' ||
+                (Object.prototype.hasOwnProperty.call(data || {}, 'entry_count') &&
+                Object.prototype.hasOwnProperty.call(data || {}, 'exit_count'));
+
+            if (isTapFlowStats) {
+                const entryCount = Number(data.entry_count || 0);
+                const exitCount = Number(data.exit_count || 0);
+                const openTrips = Number(data.open_trips || Math.max(entryCount - exitCount, 0));
+                const totalTapEvents = Number(data.total_taps || (entryCount + exitCount));
+                const safeTapTotal = totalTapEvents > 0 ? totalTapEvents : 1;
+                const safeEntryTotal = entryCount > 0 ? entryCount : 1;
+
+                latestRideStatsDatasetLabel = 'Tap Events';
+                latestRideStatsRows = [
+                    {
+                        label: 'Tap-In (Entry)',
+                        count: entryCount,
+                        percentage: ((entryCount / safeTapTotal) * 100).toFixed(1),
+                        color: '#4CAF50'
+                    },
+                    {
+                        label: 'Tap-Out (Exit)',
+                        count: exitCount,
+                        percentage: ((exitCount / safeTapTotal) * 100).toFixed(1),
+                        color: '#FF9800'
+                    },
+                    {
+                        label: 'Onboard (Open Trips)',
+                        count: openTrips,
+                        percentage: ((openTrips / safeEntryTotal) * 100).toFixed(1),
+                        color: '#2196F3'
+                    }
+                ];
+            } else {
+                const computedTotal = RIDE_STATUS_FALLBACK.reduce((sum, status) => {
+                    return sum + Number(data[status.key] || 0);
+                }, 0);
+                const total = Number(data.total_rides || computedTotal);
+                const safeTotal = total > 0 ? total : 1;
+
+                latestRideStatsDatasetLabel = 'Ride Count';
+                latestRideStatsRows = RIDE_STATUS_FALLBACK.map(status => {
+                    const count = Number(data[status.key] || 0);
+                    const percentage = ((count / safeTotal) * 100).toFixed(1);
+                    return {
+                        label: status.label,
+                        count,
+                        percentage,
+                        color: status.color
+                    };
+                });
+            }
 
             const tbody = document.getElementById('rideStatsBody');
             tbody.innerHTML = '';
 
-            statuses.forEach(status => {
-                const count = data[status.key] || 0;
-                const percentage = ((count / total) * 100).toFixed(1);
-                
+            latestRideStatsRows.forEach(row => {
                 tbody.innerHTML += `
                     <tr>
-                        <td>${status.label}</td>
-                        <td>${count}</td>
+                        <td>${row.label}</td>
+                        <td>${row.count}</td>
                         <td>
-                            ${percentage}%
+                            ${row.percentage}%
                             <div class="progress-bar">
-                                <div class="progress-fill" style="width: ${percentage}%"></div>
+                                <div class="progress-fill" style="width: ${row.percentage}%; background: ${row.color};"></div>
                             </div>
                         </td>
                     </tr>
                 `;
             });
+
+            renderRideStatsChart();
+        }
+
+        function renderRideStatsChart() {
+            const chartCanvas = document.getElementById('rideStatsChart');
+            if (!chartCanvas || typeof Chart === 'undefined') {
+                return;
+            }
+
+            const labels = latestRideStatsRows.map(row => row.label);
+            const values = latestRideStatsRows.map(row => row.count);
+            const colors = latestRideStatsRows.map(row => row.color);
+
+            if (rideStatsChart) {
+                rideStatsChart.data.labels = labels;
+                rideStatsChart.data.datasets[0].data = values;
+                rideStatsChart.data.datasets[0].backgroundColor = colors;
+                rideStatsChart.data.datasets[0].label = latestRideStatsDatasetLabel;
+                rideStatsChart.update();
+                return;
+            }
+
+            rideStatsChart = new Chart(chartCanvas, {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: latestRideStatsDatasetLabel,
+                            data: values,
+                            backgroundColor: colors,
+                            borderRadius: 6,
+                            borderSkipped: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `Count: ${context.parsed.y}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                precision: 0
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function getRideStatsExportPayload() {
+            if (!latestRideStatsRows.length) {
+                return null;
+            }
+
+            const generatedAt = new Date();
+            const total = latestRideStatsRows.reduce((sum, row) => sum + Number(row.count || 0), 0);
+            const rows = latestRideStatsRows.map(row => [row.label, row.count, `${row.percentage}%`]);
+
+            return {
+                generatedAt,
+                total,
+                rows
+            };
+        }
+
+        function getRideStatsFileSuffix() {
+            const now = new Date();
+            const yyyy = now.getFullYear();
+            const mm = String(now.getMonth() + 1).padStart(2, '0');
+            const dd = String(now.getDate()).padStart(2, '0');
+            const hh = String(now.getHours()).padStart(2, '0');
+            const min = String(now.getMinutes()).padStart(2, '0');
+            const sec = String(now.getSeconds()).padStart(2, '0');
+            return `${yyyy}${mm}${dd}_${hh}${min}${sec}`;
+        }
+
+        function downloadRideStatsExcel() {
+            const payload = getRideStatsExportPayload();
+            if (!payload) {
+                alert('No ride statistics available to export yet.');
+                return;
+            }
+
+            if (typeof XLSX === 'undefined') {
+                alert('Excel export library failed to load. Please refresh and try again.');
+                return;
+            }
+
+            const sheetData = [
+                ['Ride Statistics Report'],
+                ['Generated At', payload.generatedAt.toLocaleString()],
+                ['Total Rides', payload.total],
+                [],
+                ['Status', 'Count', 'Percentage'],
+                ...payload.rows
+            ];
+
+            const ws = XLSX.utils.aoa_to_sheet(sheetData);
+            ws['!cols'] = [
+                { wch: 18 },
+                { wch: 12 },
+                { wch: 14 }
+            ];
+
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Ride Statistics');
+            XLSX.writeFile(wb, `ride_statistics_${getRideStatsFileSuffix()}.xlsx`);
+        }
+
+        function downloadRideStatsPdf() {
+            const payload = getRideStatsExportPayload();
+            if (!payload) {
+                alert('No ride statistics available to export yet.');
+                return;
+            }
+
+            if (!window.jspdf || typeof window.jspdf.jsPDF === 'undefined') {
+                alert('PDF export library failed to load. Please refresh and try again.');
+                return;
+            }
+
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+
+            doc.setFontSize(16);
+            doc.text('Ride Statistics Report', 14, 18);
+            doc.setFontSize(11);
+            doc.text(`Generated: ${payload.generatedAt.toLocaleString()}`, 14, 26);
+            doc.text(`Total Rides: ${payload.total}`, 14, 32);
+
+            if (typeof doc.autoTable === 'function') {
+                doc.autoTable({
+                    startY: 40,
+                    head: [['Status', 'Count', 'Percentage']],
+                    body: payload.rows,
+                    styles: {
+                        fontSize: 10
+                    },
+                    headStyles: {
+                        fillColor: [53, 88, 114]
+                    }
+                });
+            } else {
+                let y = 44;
+                payload.rows.forEach(row => {
+                    doc.text(`${row[0]}  |  ${row[1]}  |  ${row[2]}`, 14, y);
+                    y += 7;
+                });
+            }
+
+            doc.save(`ride_statistics_${getRideStatsFileSuffix()}.pdf`);
         }
 
         // Update activity feed
@@ -1005,9 +1531,11 @@
             }
 
             tbody.innerHTML = drivers.map(driver => {
-                const status = driver.last_update ? 
-                    (new Date() - new Date(driver.last_update) < 60000 ? 'Online' : 'Offline') : 
-                    'Offline';
+                const hasRecentGps = driver.last_update
+                    ? (new Date() - new Date(driver.last_update) < 60000)
+                    : false;
+                const isOnline = Boolean(driver.is_online) || hasRecentGps || (driver.active_rides > 0);
+                const status = isOnline ? 'Online' : 'Offline';
                 const statusColor = status === 'Online' ? '#7AAACE' : '#999';
 
                 return `
@@ -1079,7 +1607,7 @@
 
         // Update driver marker in real-time from WebSocket
         function updateDriverMarkerRealtime(data) {
-            if (!map || !window.google || !google.maps) {
+            if (!map) {
                 return;
             }
 
@@ -1087,31 +1615,37 @@
             
             if (driverMarkers[driverId]) {
                 // Update existing marker position
-                driverMarkers[driverId].setPosition({
-                    lat: data.latitude,
-                    lng: data.longitude
-                });
+                driverMarkers[driverId].setLatLng([data.latitude, data.longitude]);
             } else {
                 // Create new marker
-                const marker = new google.maps.Marker({
-                    position: { lat: data.latitude, lng: data.longitude },
-                    map: map,
-                    title: `Driver ${driverId}`,
-                    icon: {
-                        path: google.maps.SymbolPath.CIRCLE,
-                        scale: 10,
-                        fillColor: '#355872',
-                        fillOpacity: 1,
-                        strokeColor: '#fff',
-                        strokeWeight: 2
-                    },
-                    label: {
-                        text: `${driverId}`,
-                        color: '#fff',
-                        fontSize: '12px',
-                        fontWeight: 'bold'
-                    }
+                const customIcon = L.divIcon({
+                    html: `
+                        <div style="
+                            background-color: #355872;
+                            color: white;
+                            border: 3px solid white;
+                            border-radius: 50%;
+                            width: 40px;
+                            height: 40px;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            font-weight: bold;
+                            font-size: 14px;
+                            text-align: center;
+                            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+                        ">
+                            D${driverId}
+                        </div>
+                    `,
+                    iconSize: [40, 40],
+                    iconAnchor: [20, 20],
+                    popupAnchor: [0, -20]
                 });
+
+                const marker = L.marker([data.latitude, data.longitude], { icon: customIcon })
+                    .addTo(map)
+                    .bindPopup(`<div><strong>Driver ${driverId}</strong><br>Speed: ${data.speed ? data.speed.toFixed(1) : '0'} m/s</div>`);
 
                 driverMarkers[driverId] = marker;
             }
@@ -2212,7 +2746,19 @@
                     
                     <div class="form-group">
                         <label for="vehicleModel">Vehicle Model *</label>
-                        <input type="text" id="vehicleModel" name="vehicleModel" required placeholder="Toyota Hiace">
+                        <select id="vehicleModel" name="vehicleModel" required>
+                            <option value="" selected disabled>Select vehicle model</option>
+                            <option value="Froehlich Tours Inc.">Froehlich Tours Inc.</option>
+                            <option value="Almark Transit">Almark Transit</option>
+                            <option value="Greenstar Express">Greenstar Express</option>
+                            <option value="Admiral Transport Inc.">Admiral Transport Inc.</option>
+                            <option value="Earthstar Express Inc.">Earthstar Express Inc.</option>
+                            <option value="Mega Bus Lines">Mega Bus Lines</option>
+                            <option value="Baclaran Metrolink Bus Corp.">Baclaran Metrolink Bus Corp.</option>
+                            <option value="HM Transport">HM Transport</option>
+                            <option value="JAC Liner / LLI">JAC Liner / LLI</option>
+                            <option value="RRCG Transport">RRCG Transport</option>
+                        </select>
                     </div>
                     
                     <div class="form-group">
@@ -2241,12 +2787,12 @@
                 
                 <div class="form-group">
                     <label for="nfcUserId">User ID (UUID)</label>
-                    <input type="text" id="nfcUserId" placeholder="e.g., bb6e65b6-1cc5-4b63-8b99-0c80f86e0b9b" />
+                    <input type="text" id="nfcUserId" name="nfcUserId" placeholder="e.g., bb6e65b6-1cc5-4b63-8b99-0c80f86e0b9b" />
                 </div>
                 
                 <div class="form-group">
                     <label for="nfcAmount">Amount (₱)</label>
-                    <input type="number" id="nfcAmount" placeholder="100.00" min="0.01" step="0.01" />
+                    <input type="number" id="nfcAmount" name="nfcAmount" placeholder="100.00" min="0.01" step="0.01" />
                 </div>
 
                 <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 20px;">
@@ -2296,7 +2842,7 @@
             <div class="modal-body">
                 <div class="form-group">
                     <label>Transaction ID</label>
-                    <input type="number" id="refundTransactionId" placeholder="Enter transaction ID" required>
+                    <input type="number" id="refundTransactionId" name="refundTransactionId" placeholder="Enter transaction ID" required>
                 </div>
                 <div class="form-group">
                     <label>Reason for Refund</label>
@@ -2344,11 +2890,6 @@
                     <div style="font-size: 12px; color: #666;">
                         💡 Tip: Tap cards on your RFID reader to see events in real-time
                     </div>
-
-                    <div style="margin-top: 15px; background: #FFF3E0; padding: 12px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
-                        <span style="font-size: 12px;">🧪 <strong>Testing:</strong> Simulate a card tap</span>
-                        <button onclick="rfidSimulateTap()" class="btn btn-secondary" style="background: #FF9800; color: white; padding: 6px 12px; font-size: 12px;">📡 Simulate Tap</button>
-                    </div>
                 </div>
 
                    <!-- Entry/Exit Tab -->
@@ -2384,7 +2925,6 @@
 
                        <div style="display: flex; gap: 10px;">
                            <button onclick="rfidClearEntryExitLog()" class="btn btn-secondary" style="flex: 1; background: #757575; color: white;">🗑️ Clear Log</button>
-                           <button onclick="rfidSimulateEntryExit()" class="btn btn-secondary" style="flex: 1; background: #FF9800; color: white;">📡 Simulate Tap</button>
                        </div>
                    </div>
                 <!-- Register Card Tab -->
@@ -2402,17 +2942,17 @@
                     
                     <div class="form-group">
                         <label>User ID (UUID) or Email</label>
-                        <input type="text" id="rfidRegisterUserId" placeholder="e.g., bb6e65b6-1cc5-4b63... or user@email.com">
+                        <input type="text" id="rfidRegisterUserId" name="rfidRegisterUserId" placeholder="e.g., bb6e65b6-1cc5-4b63... or user@email.com">
                     </div>
 
                     <div class="form-group">
                         <label>Card UID (Hex)</label>
-                        <input type="text" id="rfidCardUID" placeholder="Auto-populated when card is tapped (e.g., A1B2C3D4)" style="background: #f9f9f9; font-family: monospace; color: #2196F3; font-weight: bold;">
+                        <input type="text" id="rfidCardUID" name="rfidCardUID" placeholder="Auto-populated when card is tapped (e.g., A1B2C3D4)" style="background: #f9f9f9; font-family: monospace; color: #2196F3; font-weight: bold;">
                     </div>
 
                     <div class="form-group">
                         <label>Card Alias (Optional)</label>
-                        <input type="text" id="rfidCardAlias" placeholder="e.g., John's Card or Main Card">
+                        <input type="text" id="rfidCardAlias" name="rfidCardAlias" placeholder="e.g., John's Card or Main Card">
                     </div>
 
                     <div style="background: #FFF3E0; padding: 12px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #FF9800;">
@@ -2465,11 +3005,11 @@
                     <h3 style="margin-bottom: 15px;">Load Balance to Card</h3>
                     <div class="form-group">
                         <label>User ID (UUID)</label>
-                        <input type="text" id="rfidLoadUserId" placeholder="e.g., bb6e65b6-1cc5-4b63-8b99-0c80f86e0b9b">
+                        <input type="text" id="rfidLoadUserId" name="rfidLoadUserId" placeholder="e.g., bb6e65b6-1cc5-4b63-8b99-0c80f86e0b9b">
                     </div>
                     <div class="form-group">
                         <label>Amount (₱)</label>
-                        <input type="number" id="rfidLoadAmount" placeholder="Enter amount" step="0.01" min="0">
+                        <input type="number" id="rfidLoadAmount" name="rfidLoadAmount" placeholder="Enter amount" step="0.01" min="0">
                     </div>
                     <div id="rfidLoadResult" style="margin-top: 16px; padding: 12px; border-radius: 4px; display: none;"></div>
                     <button onclick="rfidLoadBalance()" class="btn btn-primary" style="width: 100%; margin-top: 10px; background: #4CAF50;">✅ Load Balance</button>
@@ -2480,7 +3020,7 @@
                     <h3 style="margin-bottom: 15px;">Check Card Balance</h3>
                     <div class="form-group">
                         <label>User ID (UUID)</label>
-                        <input type="text" id="rfidCheckUserId" placeholder="e.g., bb6e65b6-1cc5-4b63-8b99-0c80f86e0b9b">
+                        <input type="text" id="rfidCheckUserId" name="rfidCheckUserId" placeholder="e.g., bb6e65b6-1cc5-4b63-8b99-0c80f86e0b9b">
                     </div>
                     <div id="rfidCheckResult" style="margin-top: 16px; padding: 12px; border-radius: 4px; display: none; background: #E3F2FD; min-height: 100px;"></div>
                     <button onclick="rfidCheckBalance()" class="btn btn-primary" style="width: 100%; margin-top: 10px; background: #2196F3;">🔍 Check Balance</button>
@@ -2491,7 +3031,7 @@
                     <h3 style="margin-bottom: 15px;">Block or Replace Card</h3>
                     <div class="form-group">
                         <label>User ID (UUID)</label>
-                        <input type="text" id="rfidMgmtUserId" placeholder="e.g., bb6e65b6-1cc5-4b63-8b99-0c80f86e0b9b">
+                        <input type="text" id="rfidMgmtUserId" name="rfidMgmtUserId" placeholder="e.g., bb6e65b6-1cc5-4b63-8b99-0c80f86e0b9b">
                     </div>
                     <div class="form-group">
                         <label>Reason</label>
@@ -2521,7 +3061,7 @@
             <div class="modal-body">
                 <div class="form-group">
                     <label>User ID</label>
-                    <input type="text" id="cardUserId" placeholder="Enter user UUID" required>
+                    <input type="text" id="cardUserId" name="cardUserId" placeholder="Enter user UUID" required>
                 </div>
 
                 <div style="margin: 20px 0;">
@@ -2548,7 +3088,15 @@
         </div>
     </div>
     
-    <!-- Google Maps API -->
-    <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_MAPS_API_KEY&callback=initMap" async defer onerror="handleMapLoadError()"></script>
-</body>
-</html>
+    <!-- Dashboard Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
+
+    <!-- Initialize map and dashboard on page load -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            initMap();
+        });
+    </script>

@@ -1,0 +1,4 @@
+timestamp_iso,elapsed_seconds,eta_minutes,eta_text,stops_remaining,current_station,destination_station,bus_latitude,bus_longitude,distance_to_station_m
+2026-03-08T22:34:49,0.01,31.5,31 min,9,Monumento,Main Avenue (Cubao),14.6542,120.9844,8501.37
+2026-03-08T22:34:53,4.04,31.5,31 min,9,Monumento,Main Avenue (Cubao),14.6542,120.9844,8501.37
+2026-03-08T22:34:57,8.07,31.5,31 min,9,Monumento,Main Avenue (Cubao),14.6542,120.9844,8501.37

@@ -1,9 +1,12 @@
 from datetime import datetime
 from typing import Any, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator
+from sqlalchemy.orm import Session
 
+from app.database import get_db
+from app.models.payment import Payment
 from app.supabase_client import get_supabase_client, is_supabase_available
 
 router = APIRouter(prefix="/rfid", tags=["RFID"])
@@ -513,3 +516,118 @@ def clear_entry_exit_logs():
         return {"success": True, "message": "Entry/exit logs cleared"}
     except Exception as exc:
         raise _table_missing_error(exc) from exc
+
+
+def _calculate_user_balance(db: Session, user_id: str) -> float:
+    """Calculate user balance from payments table"""
+    user_payments = db.query(Payment).filter(
+        Payment.user_id == user_id,
+        Payment.status == "paid",
+    ).all()
+
+    balance = 0.0
+    for payment in user_payments:
+        if payment.method == "admin_nfc":
+            balance += payment.amount
+        elif payment.method == "bus_fare_nfc":
+            balance -= payment.amount
+
+    return float(balance)
+
+
+@router.post("/cards/tap")
+def tap_card(card_uid: str, db: Session = Depends(get_db)):
+    """
+    Tap a card and retrieve complete information:
+    - Card owner details
+    - Current balance
+    - Card status
+    
+    This endpoint combines card lookup with balance checking for convenience.
+    Example: POST /rfid/cards/tap?card_uid=1603310630
+    """
+    supabase = _require_supabase()
+    normalized_uid = card_uid.strip().upper()
+
+    try:
+        # Look up card in rfid_cards table
+        card_result = (
+            supabase.table("rfid_cards")
+            .select("id,card_uid,user_id,alias,status,registered_at,updated_at,last_tapped_at")
+            .eq("card_uid", normalized_uid)
+            .limit(1)
+            .execute()
+        )
+        card_rows = _response_data(card_result)
+        
+        if not card_rows:
+            return {
+                "success": False,
+                "message": f"Card {card_uid} is not registered in the system",
+                "card_uid": card_uid,
+                "registered": False,
+            }
+
+        card = card_rows[0]
+        user = None
+        balance = 0.0
+        
+        # Get user information if card is linked to a user
+        if card.get("user_id") is not None:
+            user_id = card.get("user_id")
+            
+            # Get user details from Supabase
+            user_rows = _response_data(
+                supabase.table("users")
+                .select("id,email,name")
+                .eq("id", user_id)
+                .limit(1)
+                .execute()
+            )
+            user = user_rows[0] if user_rows else None
+            
+            # Calculate balance from payments table
+            balance = _calculate_user_balance(db, str(user_id))
+        
+        # Update last tapped timestamp
+        supabase.table("rfid_cards").update({
+            "last_tapped_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat()
+        }).eq("card_uid", normalized_uid).execute()
+
+        return {
+            "success": True,
+            "message": f"Card {card_uid} tapped successfully",
+            "registered": True,
+            "card": {
+                "id": card.get("id"),
+                "card_uid": card.get("card_uid"),
+                "alias": card.get("alias"),
+                "status": card.get("status", "active"),
+                "registered_at": card.get("registered_at"),
+                "last_tapped_at": datetime.utcnow().isoformat(),
+            },
+            "user": {
+                "user_id": card.get("user_id"),
+                "email": user.get("email") if user else None,
+                "name": user.get("name") if user else None,
+            } if card.get("user_id") else None,
+            "balance": {
+                "amount": balance,
+                "currency": "PHP",
+                "formatted": f"₱{balance:.2f}",
+            },
+        }
+    except Exception as exc:
+        if isinstance(exc, HTTPException):
+            raise
+        raise _table_missing_error(exc) from exc
+
+
+@router.get("/cards/tap/{card_uid}")
+def tap_card_get(card_uid: str, db: Session = Depends(get_db)):
+    """
+    GET version of card tap - retrieves card owner and balance information.
+    Example: GET /rfid/cards/tap/1603310630
+    """
+    return tap_card(card_uid=card_uid, db=db)

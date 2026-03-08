@@ -10,14 +10,18 @@ dependencies:
   flutter:
     sdk: flutter
   
-  # Google Maps for live tracking
-  google_maps_flutter: ^2.5.0
+  # OpenStreetMap for live tracking (no API key needed!)
+  flutter_map: ^6.1.0
+  latlong2: ^0.9.0
   
   # GPS location services
   geolocator: ^10.1.0
   
   # HTTP requests to backend API
   http: ^1.2.0
+  
+  # Supabase for authentication and database
+  supabase_flutter: ^1.10.0
   
   # WebSocket for real-time updates
   web_socket_channel: ^2.4.0

@@ -5,6 +5,7 @@ from app.models.local_auth_user import LocalAuthUser
 from app.models.payment import Payment
 from app.models.ride import Ride
 from app.models.ride_session import RideSession
+from app.models.route_segment import RouteSegment
 from app.models.station import Station
 from app.models.user import User
 
@@ -15,6 +16,7 @@ __all__ = [
 	"GPSLog",
 	"Ride",
 	"RideSession",
+	"RouteSegment",
 	"Payment",
 	"LocalAuthUser",
 ]
