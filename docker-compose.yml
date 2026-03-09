@@ -1,0 +1,101 @@
+# Docker Compose for PEAK MAP - Full Stack
+
+version: '3.8'
+
+services:
+  # Backend API
+  backend:
+    build:
+      context: ./peak-map-backend
+      dockerfile: Dockerfile
+    container_name: peakmap-backend
+    ports:
+      - "8001:8000"  # Map host:8001 to container:8000
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/peakmap.db}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - FORCE_LOCAL_AUTH=${FORCE_LOCAL_AUTH:-false}
+      - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
+      - SECRET_KEY=${SECRET_KEY:-change-this-in-production}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:8080}
+    volumes:
+      - backend-data:/app/data  # Persist SQLite database
+      - ./peak-map-backend/app:/app/app  # Hot reload for development
+    networks:
+      - peakmap-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # PostgreSQL Database (Optional - comment out if using Supabase)
+  # postgres:
+  #   image: postgres:15-alpine
+  #   container_name: peakmap-postgres
+  #   environment:
+  #     - POSTGRES_DB=peakmap
+  #     - POSTGRES_USER=peakmap
+  #     - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-changeme}
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+  #   networks:
+  #     - peakmap-network
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U peakmap"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+
+  # Redis Cache (Optional)
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: peakmap-redis
+  #   ports:
+  #     - "6379:6379"
+  #   volumes:
+  #     - redis-data:/data
+  #   networks:
+  #     - peakmap-network
+  #   restart: unless-stopped
+  #   command: redis-server --appendonly yes
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 3
+
+  # Nginx for serving admin dashboard (Optional)
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: peakmap-nginx
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./admin_dashboard.html:/usr/share/nginx/html/index.html:ro
+  #     - ./nginx.conf:/etc/nginx/nginx.conf:ro
+  #   networks:
+  #     - peakmap-network
+  #   restart: unless-stopped
+  #   depends_on:
+  #     - backend
+
+volumes:
+  backend-data:
+    driver: local
+  # postgres-data:
+  #   driver: local
+  # redis-data:
+  #   driver: local
+
+networks:
+  peakmap-network:
+    driver: bridge

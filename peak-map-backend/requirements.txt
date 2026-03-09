@@ -1,8 +1,31 @@
-fastapi
-uvicorn
-sqlalchemy
-psycopg2-binary
-python-dotenv
-pydantic
-requests
-supabase
+# Core Framework
+fastapi==0.135.1
+uvicorn==0.40.0
+pydantic==2.11.0
+
+# Database
+sqlalchemy==2.0.46
+psycopg2-binary==2.9.10
+
+# Authentication & Backend Services
+supabase==2.28.0
+python-dotenv==1.0.1
+requests==2.32.5
+
+# Production Web Server
+gunicorn==23.0.0
+
+# Optional: Performance & Caching
+# redis==5.2.1
+# hiredis==3.1.0
+
+# Optional: Background Tasks
+# celery==5.4.0
+# celery[redis]==5.4.0
+
+# Optional: Monitoring & Error Tracking
+# sentry-sdk[fastapi]==2.19.2
+
+# Optional: Testing
+# pytest==8.3.5
+# httpx==0.28.1
