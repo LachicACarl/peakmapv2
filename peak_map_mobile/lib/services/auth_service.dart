@@ -1,17 +1,93 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'network_config.dart';
 
 class AuthService {
-  static String get baseUrl {
-    if (kIsWeb) {
-      final host = Uri.base.host.isEmpty ? 'localhost' : Uri.base.host;
-      final scheme = Uri.base.scheme == 'https' ? 'https' : 'http';
-      return '$scheme://$host:8000';
+  static String get baseUrl => NetworkConfig.baseUrl;
+  static const String _savedApiBaseKey = 'api_base_url';
+
+  static String _normalizeBaseUrl(String value) {
+    return value.trim().replaceAll(RegExp(r'/+$'), '');
+  }
+
+  static Future<List<String>> _candidateBaseUrls() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedBaseUrl = prefs.getString(_savedApiBaseKey);
+    final unique = <String>{};
+    final candidates = <String>[];
+
+    void addCandidate(String? rawUrl) {
+      if (rawUrl == null) {
+        return;
+      }
+
+      final normalized = _normalizeBaseUrl(rawUrl);
+      if (normalized.isEmpty || unique.contains(normalized)) {
+        return;
+      }
+
+      unique.add(normalized);
+      candidates.add(normalized);
     }
-    return 'http://192.168.5.32:8000';
+
+    addCandidate(baseUrl);
+    addCandidate(savedBaseUrl);
+    for (final fallback in NetworkConfig.fallbackBaseUrls) {
+      addCandidate(fallback);
+    }
+
+    return candidates;
+  }
+
+  static Future<void> _storeWorkingBaseUrl(String url) async {
+    final normalized = _normalizeBaseUrl(url);
+    if (normalized.isEmpty) {
+      return;
+    }
+
+    NetworkConfig.setRuntimeBaseUrl(normalized);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_savedApiBaseKey, normalized);
+  }
+
+  static Future<Map<String, dynamic>> _postWithFailover({
+    required String path,
+    required Map<String, dynamic> payload,
+    required Duration timeout,
+  }) async {
+    final candidateBaseUrls = await _candidateBaseUrls();
+    var timeoutCount = 0;
+    String? lastError;
+
+    for (final candidate in candidateBaseUrls) {
+      try {
+        final response = await http
+            .post(
+              Uri.parse('$candidate$path'),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode(payload),
+            )
+            .timeout(timeout);
+
+        return {
+          'ok': true,
+          'response': response,
+          'base_url': candidate,
+        };
+      } on TimeoutException {
+        timeoutCount += 1;
+      } catch (e) {
+        lastError = e.toString();
+      }
+    }
+
+    return {
+      'ok': false,
+      'type': timeoutCount == candidateBaseUrls.length ? 'timeout' : 'error',
+      'error': lastError,
+    };
   }
 
   static int? _parseUserId(dynamic raw) {
@@ -59,15 +135,33 @@ class AuthService {
     // ALWAYS use backend API for authentication (both passenger and driver)
     // Backend handles Supabase auth + local fallback + rate limiting
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/auth/login'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
+      final requestResult = await _postWithFailover(
+        path: '/auth/login',
+        payload: {
           'email': email,
           'password': password,
           'user_type': userType,
-        }),
-      ).timeout(const Duration(seconds: 10));
+        },
+        timeout: const Duration(seconds: 8),
+      );
+
+      if (requestResult['ok'] != true) {
+        if (requestResult['type'] == 'timeout') {
+          return {
+            'success': false,
+            'message': 'Connection timeout. Please check your network.',
+          };
+        }
+
+        return {
+          'success': false,
+          'message': 'Connection error. Please try again.',
+        };
+      }
+
+      final response = requestResult['response'] as http.Response;
+      final usedBaseUrl = (requestResult['base_url'] as String?) ?? baseUrl;
+      await _storeWorkingBaseUrl(usedBaseUrl);
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -80,10 +174,9 @@ class AuthService {
         }
 
         // Save session
+        final resolvedUserId = _parseUserId(data['user_id']) ?? 0;
         await _saveSession(
-          userId: data['user_id'] is String 
-            ? data['user_id'].hashCode 
-            : (data['user_id'] as int? ?? 0),
+          userId: resolvedUserId,
           email: data['email'] ?? email,
           userType: userType,
           token: data['token'] ?? '',
@@ -144,11 +237,29 @@ class AuthService {
         payload['phone'] = phone.trim();
       }
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/auth/register'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(payload),
-      ).timeout(const Duration(seconds: 15));
+      final requestResult = await _postWithFailover(
+        path: '/auth/register',
+        payload: payload,
+        timeout: const Duration(seconds: 12),
+      );
+
+      if (requestResult['ok'] != true) {
+        if (requestResult['type'] == 'timeout') {
+          return {
+            'success': false,
+            'message': 'Connection timeout. Please check your network.',
+          };
+        }
+
+        return {
+          'success': false,
+          'message': 'Connection error. Please check backend and try again.',
+        };
+      }
+
+      final response = requestResult['response'] as http.Response;
+      final usedBaseUrl = (requestResult['base_url'] as String?) ?? baseUrl;
+      await _storeWorkingBaseUrl(usedBaseUrl);
 
       if (response.statusCode == 201 || response.statusCode == 200) {
         final data = jsonDecode(response.body);

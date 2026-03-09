@@ -31,6 +31,26 @@
             margin-bottom: 5px;
         }
 
+        .header-brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 5px;
+        }
+
+        .header-logo {
+            width: 44px;
+            height: 44px;
+            border-radius: 8px;
+            background: #ffffff;
+            padding: 4px;
+        }
+
+        .header-brand h1 {
+            margin: 0;
+            font-size: 28px;
+        }
+
         .header .status {
             font-size: 14px;
             opacity: 0.9;
@@ -657,11 +677,181 @@
                 height: 400px;
             }
         }
+        /* Admin Login Page Styles */
+        #adminLoginPage {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, #7AAACE 0%, #355872 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+        }
+
+        #adminLoginPage.hidden {
+            display: none;
+        }
+
+        .login-card {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            padding: 40px;
+            width: 100%;
+            max-width: 420px;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .login-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .login-header img {
+            width: 80px;
+            height: 80px;
+            border-radius: 16px;
+            margin-bottom: 16px;
+        }
+
+        .login-header h1 {
+            font-size: 28px;
+            color: #355872;
+            margin-bottom: 8px;
+        }
+
+        .login-header p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .login-form {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .form-group label {
+            font-size: 14px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .form-group input {
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #7AAACE;
+        }
+
+        .login-btn {
+            background: linear-gradient(135deg, #7AAACE 0%, #355872 100%);
+            color: white;
+            border: none;
+            padding: 14px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-top: 10px;
+        }
+
+        .login-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(122, 170, 206, 0.4);
+        }
+
+        .login-btn:active {
+            transform: translateY(0);
+        }
+
+        .login-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .login-error {
+            background: #FFEBEE;
+            color: #C62828;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .login-error.visible {
+            display: block;
+        }
+
+        #adminDashboard {
+            display: none;
+        }
+
+        #adminDashboard.visible {
+            display: block;
+        }
     </style>
 </head>
 <body>
+    <!-- Admin Login Page -->
+    <div id="adminLoginPage">
+        <div class="login-card">
+            <div class="login-header">
+                <img src="peakmap_logo.png" alt="PeakMap Logo">
+                <h1>Admin Login</h1>
+                <p>Enter your credentials to access the dashboard</p>
+            </div>
+            <form class="login-form" onsubmit="handleAdminLogin(event)">
+                <div class="login-error" id="loginError"></div>
+                <div class="form-group">
+                    <label for="adminEmail">Email Address</label>
+                    <input type="email" id="adminEmail" name="email" required placeholder="admin@peakmap.com" autocomplete="email">
+                </div>
+                <div class="form-group">
+                    <label for="adminPassword">Password</label>
+                    <input type="password" id="adminPassword" name="password" required placeholder="Enter your password" autocomplete="current-password">
+                </div>
+                <button type="submit" class="login-btn" id="loginBtn">
+                    Login to Dashboard
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Admin Dashboard (hidden until login) -->
+    <div id="adminDashboard">
     <div class="header">
-        <h1>🗺️ PEAK MAP - Admin Dashboard</h1>
+        <div class="header-brand">
+            <img src="peakmap_logo.png" alt="PeakMap Logo" class="header-logo">
+            <h1>PEAK MAP - Admin Dashboard</h1>
+        </div>
         <div class="status">
             <span class="ws-indicator disconnected" id="wsIndicator"></span>
             <span id="wsStatus">Connecting to server...</span>
@@ -692,23 +882,23 @@
         <!-- Quick Actions -->
         <div class="quick-actions">
             <a class="action-card" href="#" onclick="openRFIDManager(); return false;" style="background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);">
-                <div class="icon">📡</div>
+                <div class="icon">RFID</div>
                 <div class="label">RFID Reader</div>
             </a>
             <a class="action-card" href="#" onclick="openNFCBalanceLoader(); return false;">
-                <div class="icon">📱</div>
+                <div class="icon">NFC</div>
                 <div class="label">NFC Balance Loader</div>
             </a>
             <a class="action-card" href="#" onclick="openTransactionRefund(); return false;" style="background: linear-gradient(135deg, #FF9800 0%, #FF6F00 100%);">
-                <div class="icon">↩️</div>
+                <div class="icon">RFD</div>
                 <div class="label">Refund Transaction</div>
             </a>
             <a class="action-card" href="#" onclick="openCardManager(); return false;" style="background: linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%);">
-                <div class="icon">🔒</div>
+                <div class="icon">CRD</div>
                 <div class="label">Card Management</div>
             </a>
             <a class="action-card" href="#" onclick="alert('Settings - Coming Soon'); return false;" style="background: linear-gradient(135deg, #607D8B 0%, #455A64 100%);">
-                <div class="icon">⚙️</div>
+                <div class="icon">SET</div>
                 <div class="label">Settings</div>
             </a>
         </div>
@@ -718,7 +908,7 @@
             <!-- Live Map -->
             <div class="map-container" style="position: relative;">
                 <div class="map-header">
-                    📍 Live Driver Tracking
+                    Live Driver Tracking
                 </div>
                 <div id="map"></div>
                 
@@ -741,7 +931,7 @@
                         margin-bottom: 10px;
                         border-bottom: 2px solid #E0E0E0;
                         padding-bottom: 6px;
-                    ">📌 Map Legend</div>
+                    ">Map Legend</div>
                     
                     <div style="display: flex; flex-direction: column; gap: 8px;">
                         <!-- Active Driver -->
@@ -757,7 +947,7 @@
                                 align-items: center;
                                 justify-content: center;
                                 font-size: 12px;
-                            ">🚌</div>
+                            ">D</div>
                             <span style="font-size: 11px; color: #333;">Active Driver</span>
                         </div>
                         
@@ -774,7 +964,7 @@
                                 align-items: center;
                                 justify-content: center;
                                 font-size: 12px;
-                            ">🚌</div>
+                            ">D</div>
                             <span style="font-size: 11px; color: #333;">Idle Driver</span>
                         </div>
                         
@@ -787,7 +977,7 @@
                             color: #666;
                             font-style: italic;
                         ">
-                            💚 Pulse = Real-time active
+                            Pulse = Real-time active
                         </div>
                     </div>
                 </div>
@@ -801,12 +991,12 @@
             <div class="sidebar">
                 <!-- Payment Breakdown -->
                 <div class="card">
-                    <div class="card-header">💳 Payment Breakdown</div>
+                    <div class="card-header">Payment Breakdown</div>
                     <div class="card-content">
                         <div class="payment-breakdown" id="paymentBreakdown">
                             <div class="payment-item">
                                 <div class="method">
-                                    <div class="icon cash">💵</div>
+                                    <div class="icon cash">Cash</div>
                                     Cash
                                 </div>
                                 <div class="amount">₱0.00</div>
@@ -818,7 +1008,7 @@
 
                 <!-- Recent Activity -->
                 <div class="card">
-                    <div class="card-header">📋 Recent Activity</div>
+                    <div class="card-header">Recent Activity</div>
                     <div class="activity-feed" id="activityFeed">
                         <div class="activity-item">
                             <div class="activity-time">No recent activity</div>
@@ -834,7 +1024,7 @@
             <!-- Ride Statistics -->
             <div class="card">
                 <div class="card-header">
-                    <span class="card-header-title">📊 Ride Statistics (Tap-In/Tap-Out)</span>
+                    <span class="card-header-title">Ride Statistics (Tap-In/Tap-Out)</span>
                     <div class="ride-stats-actions">
                         <button type="button" class="btn-export" onclick="downloadRideStatsPdf()">Download PDF</button>
                         <button type="button" class="btn-export" onclick="downloadRideStatsExcel()">Download Excel</button>
@@ -895,8 +1085,11 @@
     </div>
 
     <script>
-        const API_BASE = 'http://127.0.0.1:8000';
-        const WS_URL = 'ws://127.0.0.1:8000/ws/admin';
+        const DASHBOARD_HOST = window.location.hostname || '127.0.0.1';
+        const HTTP_SCHEME = window.location.protocol === 'https:' ? 'https' : 'http';
+        const WS_SCHEME = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        const API_BASE = `${HTTP_SCHEME}://${DASHBOARD_HOST}:8001`;
+        const WS_URL = `${WS_SCHEME}://${DASHBOARD_HOST}:8001/ws/admin`;
         
         let map;
         let driverMarkers = {};
@@ -1095,7 +1288,7 @@
                                     box-shadow: 0 4px 12px rgba(0,0,0,0.4);
                                     position: relative;
                                 ">
-                                    <div style="font-size: 16px;">🚌</div>
+                                    <div style="font-size: 10px; letter-spacing: 0.4px;">BUS</div>
                                     <div style="font-size: 10px; margin-top: -2px;">D${ride.driver_id}</div>
                                 </div>
                                 
@@ -1149,9 +1342,13 @@
                                 border-bottom: 2px solid ${markerColor};
                             ">
                                 <div style="
-                                    font-size: 28px;
+                                    font-size: 12px;
+                                    font-weight: 700;
                                     margin-right: 10px;
-                                ">🚌</div>
+                                    padding: 6px 8px;
+                                    border-radius: 6px;
+                                    background: #F2F2F2;
+                                ">BUS</div>
                                 <div>
                                     <h3 style="
                                         margin: 0;
@@ -1176,7 +1373,7 @@
                                     display: flex;
                                     justify-content: space-between;
                                 ">
-                                    <span style="color: #666; font-size: 12px; font-weight: 500;">📋 Ride ID:</span>
+                                    <span style="color: #666; font-size: 12px; font-weight: 500;">Ride ID:</span>
                                     <span style="font-weight: 700; font-size: 12px; color: #333;">#${ride.ride_id}</span>
                                 </div>
                                 
@@ -1187,7 +1384,7 @@
                                     display: flex;
                                     justify-content: space-between;
                                 ">
-                                    <span style="color: #666; font-size: 12px; font-weight: 500;">💰 Fare:</span>
+                                    <span style="color: #666; font-size: 12px; font-weight: 500;">Fare:</span>
                                     <span style="font-weight: 700; font-size: 12px; color: #4CAF50;">₱${ride.fare_amount ? ride.fare_amount.toFixed(2) : '0.00'}</span>
                                 </div>
                                 
@@ -1198,7 +1395,7 @@
                                     display: flex;
                                     justify-content: space-between;
                                 ">
-                                    <span style="color: #666; font-size: 12px; font-weight: 500;">⚡ Speed:</span>
+                                    <span style="color: #666; font-size: 12px; font-weight: 500;">Speed:</span>
                                     <span style="font-weight: 700; font-size: 12px; color: #2196F3;">${ride.driver_speed ? ride.driver_speed.toFixed(1) : '0.0'} m/s</span>
                                 </div>
                                 
@@ -1210,7 +1407,7 @@
                                     color: #666;
                                     text-align: center;
                                 ">
-                                    📍 ${ride.driver_lat.toFixed(5)}, ${ride.driver_lng.toFixed(5)}
+                                    ${ride.driver_lat.toFixed(5)}, ${ride.driver_lng.toFixed(5)}
                                 </div>
                             </div>
                         </div>
@@ -1234,7 +1431,7 @@
             container.innerHTML = '';
 
             const methods = [
-                { key: 'cash', icon: '💵', label: 'Cash', class: 'cash' }
+                { key: 'cash', icon: 'Cash', label: 'Cash', class: 'cash' }
             ];
 
             methods.forEach(method => {
@@ -1672,6 +1869,11 @@
         let entryExitLog = [];
         let entryCount = 0;
         let exitCount = 0;
+        let rfidPollInterval = null;
+        let rfidKnownLogIds = new Set();
+        let rfidKeyboardBuffer = '';
+        let rfidKeyboardLastKeyAt = 0;
+        let rfidKeyboardAttached = false;
 
         async function openRFIDManager() {
             document.getElementById('rfidModal').style.display = 'block';
@@ -1683,11 +1885,14 @@
                 loadEntryExitLogs(),
             ]);
 
+            startRFIDLiveMonitor();
+
             switchRFIDTab('monitor');
         }
 
         function closeRFIDManager() {
             document.getElementById('rfidModal').style.display = 'none';
+            stopRFIDLiveMonitor();
         }
 
         function switchRFIDTab(tabName, clickedButton = null) {
@@ -1712,9 +1917,199 @@
             if (tabName === 'registry') {
                 rfidLoadRegistry();
             }
-            if (tabName === 'entry-exit') {
-                loadEntryExitLogs();
-                switchEntryExitMode(currentEntryExitMode);
+        }
+
+        function startRFIDLiveMonitor() {
+            if (!rfidKeyboardAttached) {
+                document.addEventListener('keydown', handleRFIDKeyboardInput);
+                rfidKeyboardAttached = true;
+            }
+
+            if (rfidPollInterval) {
+                clearInterval(rfidPollInterval);
+            }
+
+            // Bootstrap latest tap logs, then poll for new logs.
+            pollRFIDLogsIntoMonitor(true);
+            rfidPollInterval = setInterval(() => {
+                pollRFIDLogsIntoMonitor(false);
+            }, 2000);
+        }
+
+        function stopRFIDLiveMonitor() {
+            if (rfidPollInterval) {
+                clearInterval(rfidPollInterval);
+                rfidPollInterval = null;
+            }
+        }
+
+        async function pollRFIDLogsIntoMonitor(isBootstrap) {
+            const modal = document.getElementById('rfidModal');
+            if (!modal || modal.style.display !== 'block') {
+                return;
+            }
+
+            try {
+                let records = [];
+                let source = '';
+                let entryCounter = null;
+                let exitCounter = null;
+
+                // Primary source: admin tap events (payments + tap flow).
+                try {
+                    const adminResponse = await fetch(`${API_BASE}/admin/rfid_tap_events?limit=25`);
+                    const adminPayload = await adminResponse.json();
+                    if (adminResponse.ok && adminPayload.success && Array.isArray(adminPayload.events)) {
+                        source = 'admin';
+                        records = adminPayload.events.map((event) => {
+                            const rawTapType = String(event.tap_type || 'tap-in').toLowerCase();
+                            const tapType = rawTapType.replace('_', '-');
+                            return {
+                                eventId: `admin-${event.id ?? event.timestamp ?? Math.random()}`,
+                                tapType,
+                                userLabel: (event.user_id != null ? String(event.user_id) : 'Unknown'),
+                                cardUID: (event.card_uid || 'unknown').toUpperCase(),
+                                status: String(event.status || 'SUCCESS').toUpperCase(),
+                            };
+                        });
+                    }
+                } catch (_) {
+                    // Ignore and fallback below.
+                }
+
+                // Fallback source: Supabase entry/exit logs.
+                if (records.length === 0) {
+                    const response = await fetch(`${API_BASE}/rfid/entry-exit?limit=25`);
+                    const payload = await response.json();
+
+                    if (!response.ok || !payload.success || !Array.isArray(payload.logs)) {
+                        return;
+                    }
+
+                    source = 'entry-exit';
+                    entryCounter = payload.entry_count || 0;
+                    exitCounter = payload.exit_count || 0;
+                    records = payload.logs.map((log) => {
+                        const mode = (log.mode || 'entry').toLowerCase();
+                        return {
+                            eventId: `entryexit-${log.id ?? log.created_at ?? Math.random()}`,
+                            tapType: mode === 'exit' ? 'tap-out' : 'tap-in',
+                            userLabel: log.user_email || log.user_identifier || (log.user_id != null ? String(log.user_id) : 'Unknown'),
+                            cardUID: (log.card_uid || 'unknown').toUpperCase(),
+                            status: 'SUCCESS',
+                        };
+                    });
+                }
+
+                if (!Array.isArray(records) || records.length === 0) {
+                    return;
+                }
+
+                if (isBootstrap && rfidTapEvents.length === 0) {
+                    const seed = [...records].reverse().slice(0, 8);
+                    seed.forEach((rec) => {
+                        addRFIDTapEvent(rec.tapType, rec.userLabel, rec.cardUID, rec.status, `${rec.userLabel} (${rec.cardUID})`);
+                    });
+                }
+
+                const newRecords = [];
+                records.forEach((rec) => {
+                    if (!rec.eventId) {
+                        return;
+                    }
+                    if (!rfidKnownLogIds.has(rec.eventId)) {
+                        rfidKnownLogIds.add(rec.eventId);
+                        newRecords.push(rec);
+                    }
+                });
+
+                newRecords.reverse().forEach((rec) => {
+                    addRFIDTapEvent(rec.tapType, rec.userLabel, rec.cardUID, rec.status, `${rec.userLabel} (${rec.cardUID})`);
+
+                    const registerTab = document.getElementById('rfidTab_register');
+                    if (registerTab && registerTab.style.display === 'block') {
+                        document.getElementById('rfidCardUID').value = rec.cardUID;
+                        lastTappedCardUID = rec.cardUID;
+                    }
+                });
+
+                if (source === 'entry-exit') {
+                    entryCount = entryCounter || 0;
+                    exitCount = exitCounter || 0;
+                    updateEntryExitDisplay();
+                }
+            } catch (error) {
+                console.warn('RFID monitor poll failed:', error);
+            }
+        }
+
+        function handleRFIDKeyboardInput(event) {
+            const modal = document.getElementById('rfidModal');
+            if (!modal || modal.style.display !== 'block') {
+                return;
+            }
+
+            const target = event.target;
+            const tag = (target && target.tagName ? target.tagName.toLowerCase() : '');
+            const isTypingField = tag === 'input' || tag === 'textarea' || tag === 'select' || (target && target.isContentEditable);
+            if (isTypingField) {
+                return;
+            }
+
+            const now = Date.now();
+            if (now - rfidKeyboardLastKeyAt > 150) {
+                rfidKeyboardBuffer = '';
+            }
+            rfidKeyboardLastKeyAt = now;
+
+            if (event.key === 'Enter') {
+                const uid = rfidKeyboardBuffer.trim().toUpperCase();
+                rfidKeyboardBuffer = '';
+                if (uid.length >= 6) {
+                    processKeyboardRFIDTap(uid);
+                }
+                return;
+            }
+
+            if (/^[a-zA-Z0-9]$/.test(event.key)) {
+                rfidKeyboardBuffer += event.key.toUpperCase();
+                if (rfidKeyboardBuffer.length > 32) {
+                    rfidKeyboardBuffer = rfidKeyboardBuffer.slice(-32);
+                }
+            }
+        }
+
+        async function processKeyboardRFIDTap(cardUID) {
+            const normalizedUID = (cardUID || '').trim().toUpperCase();
+            if (!normalizedUID) {
+                return;
+            }
+
+            let userLabel = 'Unknown';
+
+            // Try to resolve card owner, but do not block monitor updates when lookup fails.
+            try {
+                const infoResponse = await fetch(`${API_BASE}/rfid/cards/tap/${encodeURIComponent(normalizedUID)}`);
+                const infoPayload = await infoResponse.json();
+                if (infoResponse.ok && infoPayload && infoPayload.user) {
+                    userLabel = infoPayload.user.email || infoPayload.user.user_id || 'Unknown';
+                }
+            } catch (_) {
+                // Reader tap should still show even if lookup endpoint fails.
+            }
+
+            addRFIDTapEvent('tap-in', String(userLabel), normalizedUID, 'READER', `Reader tap (${normalizedUID})`);
+
+            const registerTab = document.getElementById('rfidTab_register');
+            if (registerTab && registerTab.style.display === 'block') {
+                document.getElementById('rfidCardUID').value = normalizedUID;
+                lastTappedCardUID = normalizedUID;
+            }
+
+            try {
+                await logEntryExit(normalizedUID, String(userLabel), currentEntryExitMode);
+            } catch (error) {
+                console.warn('Keyboard RFID logEntryExit failed:', error);
             }
         }
 
@@ -1750,11 +2145,11 @@
             const normalizedUID = (cardUID || 'unknown').toUpperCase();
             const time = new Date().toLocaleTimeString();
             const icons = {
-                'tap-in': '✅',
-                'tap-out': '🚪',
-                'balance-load': '💰',
-                'block': '🚫',
-                'register': '🏷️',
+                'tap-in': 'IN',
+                'tap-out': 'OUT',
+                'balance-load': 'LOAD',
+                'block': 'BLOCK',
+                'register': 'REG',
             };
 
             const registered = rfidCardRegistry[normalizedUID];
@@ -1765,10 +2160,10 @@
                 type,
                 passengerId: passengerId ? String(passengerId).substring(0, 12) : 'unknown',
                 cardUID: normalizedUID,
-                status: showRegistrationWarning ? '⚠️ Not Registered' : status,
+                status: showRegistrationWarning ? 'Not Registered' : status,
                 text: linkedUser ? `${text} (${linkedUser})` : text,
                 time,
-                icon: icons[type] || '📡',
+                icon: icons[type] || 'RFID',
             });
 
             if (rfidTapEvents.length > 20) {
@@ -1978,6 +2373,10 @@
             const entryCard = document.getElementById('entryModeCard');
             const exitCard = document.getElementById('exitModeCard');
 
+            if (!entryCard || !exitCard) {
+                return;
+            }
+
             if (mode === 'entry') {
                 entryCard.style.borderColor = '#2196F3';
                 entryCard.style.background = '#E3F2FD';
@@ -2002,12 +2401,19 @@
                 }
 
                 entryExitLog = (payload.logs || []).map(item => ({
+                    id: item.id,
                     cardUID: item.card_uid,
                     userId: item.user_email || item.user_identifier || (item.user_id != null ? String(item.user_id) : 'Unknown'),
                     mode: item.mode,
                     timestamp: item.created_at,
                     displayTime: item.created_at ? new Date(item.created_at).toLocaleString() : new Date().toLocaleString(),
                 }));
+
+                rfidKnownLogIds = new Set(
+                    entryExitLog
+                        .map(item => item.id)
+                        .filter(id => id != null)
+                );
 
                 entryCount = payload.entry_count || 0;
                 exitCount = payload.exit_count || 0;
@@ -2044,12 +2450,17 @@
 
                 const saved = payload.entry || {};
                 entryExitLog.unshift({
+                    id: saved.id,
                     cardUID: saved.card_uid || normalizedUID,
                     userId: saved.user_identifier || userId || 'Unknown',
                     mode: saved.mode || mode,
                     timestamp: saved.created_at || new Date().toISOString(),
                     displayTime: saved.created_at ? new Date(saved.created_at).toLocaleString() : new Date().toLocaleString(),
                 });
+
+                if (saved.id != null) {
+                    rfidKnownLogIds.add(saved.id);
+                }
 
                 if (entryExitLog.length > 100) {
                     entryExitLog.pop();
@@ -2068,10 +2479,19 @@
         }
 
         function updateEntryExitDisplay() {
-            document.getElementById('entryCount').textContent = entryCount;
-            document.getElementById('exitCount').textContent = exitCount;
+            const entryCountEl = document.getElementById('entryCount');
+            const exitCountEl = document.getElementById('exitCount');
+            if (entryCountEl) {
+                entryCountEl.textContent = entryCount;
+            }
+            if (exitCountEl) {
+                exitCountEl.textContent = exitCount;
+            }
 
             const logDiv = document.getElementById('entryExitLog');
+            if (!logDiv) {
+                return;
+            }
             if (entryExitLog.length === 0) {
                 logDiv.innerHTML = `
                     <div style="color: #999; text-align: center; padding: 30px 10px;">
@@ -2869,7 +3289,6 @@
                 <!-- Tabs -->
                 <div style="display: flex; gap: 10px; border-bottom: 2px solid #eee; margin-bottom: 20px; flex-wrap: wrap;">
                           <button class="rfid-tab-btn active" onclick="switchRFIDTab('monitor', this)">📊 Monitor Taps</button>
-                              <button class="rfid-tab-btn" onclick="switchRFIDTab('entry-exit', this)">🚪 Entry/Exit</button>
                           <button class="rfid-tab-btn" onclick="switchRFIDTab('register', this)">🏷️ Register Card</button>
                           <button class="rfid-tab-btn" onclick="switchRFIDTab('registry', this)">📋 Card Registry</button>
                           <button class="rfid-tab-btn" onclick="switchRFIDTab('balance', this)">💰 Load Balance</button>
@@ -2888,45 +3307,10 @@
                         </div>
                     </div>
                     <div style="font-size: 12px; color: #666;">
-                        💡 Tip: Tap cards on your RFID reader to see events in real-time
+                        Tip: Tap cards on your RFID reader to see events in real time. Keyboard-emulation readers are auto-detected when this modal is open.
                     </div>
                 </div>
 
-                   <!-- Entry/Exit Tab -->
-                   <div id="rfidTab_entry-exit" class="rfid-tab-content" style="display: none;">
-                       <h3 style="margin-bottom: 15px;">🚪 Entry/Exit Tracking</h3>
-                   
-                       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
-                           <!-- Entry Mode Card -->
-                           <div id="entryModeCard" style="background: #E3F2FD; padding: 20px; border-radius: 12px; text-align: center; cursor: pointer; border: 3px solid #2196F3; transition: all 0.2s;" onclick="switchEntryExitMode('entry')">
-                               <div style="font-size: 32px; margin-bottom: 10px;">✅</div>
-                               <div style="font-weight: bold; font-size: 16px; color: #1976D2;">ENTRY (Tap-In)</div>
-                               <div style="font-size: 12px; color: #555; margin-top: 8px;">Passenger boarding</div>
-                               <div id="entryCount" style="font-size: 24px; font-weight: bold; color: #2196F3; margin-top: 8px;">0</div>
-                           </div>
-
-                           <!-- Exit Mode Card -->
-                           <div id="exitModeCard" style="background: #FFF3E0; padding: 20px; border-radius: 12px; text-align: center; cursor: pointer; border: 3px solid #ccc; transition: all 0.2s;" onclick="switchEntryExitMode('exit')">
-                               <div style="font-size: 32px; margin-bottom: 10px;">🚪</div>
-                               <div style="font-weight: bold; font-size: 16px; color: #E65100;">EXIT (Tap-Out)</div>
-                               <div style="font-size: 12px; color: #555; margin-top: 8px;">Passenger exiting</div>
-                               <div id="exitCount" style="font-size: 24px; font-weight: bold; color: #FF9800; margin-top: 8px;">0</div>
-                           </div>
-                       </div>
-
-                       <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-                           <h4 style="margin-bottom: 12px;">📋 Entry/Exit Log</h4>
-                           <div id="entryExitLog" style="max-height: 300px; overflow-y: auto; background: white; border-radius: 8px; padding: 10px;">
-                               <div style="color: #999; text-align: center; padding: 30px 10px;">
-                                   ⏳ Waiting for card taps...
-                               </div>
-                           </div>
-                       </div>
-
-                       <div style="display: flex; gap: 10px;">
-                           <button onclick="rfidClearEntryExitLog()" class="btn btn-secondary" style="flex: 1; background: #757575; color: white;">🗑️ Clear Log</button>
-                       </div>
-                   </div>
                 <!-- Register Card Tab -->
                 <div id="rfidTab_register" class="rfid-tab-content" style="display: none;">
                     <h3 style="margin-bottom: 15px;">🏷️ Register Card to User</h3>
@@ -3088,15 +3472,160 @@
         </div>
     </div>
     
+    </div>
+    <!-- End Admin Dashboard -->
+    
     <!-- Dashboard Libraries -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
 
+    <!-- Admin Authentication Script -->
+    <script>
+        // Admin authentication functions
+        const ADMIN_SESSION_KEY = 'peakmap_admin_session';
+        
+        // Check if admin is already logged in
+        function checkAdminAuth() {
+            const session = localStorage.getItem(ADMIN_SESSION_KEY);
+            if (session) {
+                try {
+                    const sessionData = JSON.parse(session);
+                    if (sessionData.token && sessionData.email) {
+                        // Already logged in, show dashboard
+                        showDashboard();
+                        return true;
+                    }
+                } catch (e) {
+                    console.error('Invalid session data:', e);
+                    localStorage.removeItem(ADMIN_SESSION_KEY);
+                }
+            }
+            return false;
+        }
+        
+        // Handle admin login form submission
+        async function handleAdminLogin(event) {
+            event.preventDefault();
+            
+            const email = document.getElementById('adminEmail').value;
+            const password = document.getElementById('adminPassword').value;
+            const loginBtn = document.getElementById('loginBtn');
+            const errorDiv = document.getElementById('loginError');
+            
+            // Disable button during login
+            loginBtn.disabled = true;
+            loginBtn.textContent = 'Logging in...';
+            errorDiv.classList.remove('visible');
+            
+            try {
+                const response = await fetch(`${API_BASE}/admin/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    // Store session
+                    const sessionData = {
+                        email: data.email,
+                        name: data.name,
+                        user_id: data.user_id,
+                        token: data.token || 'local_auth',
+                        auth_method: data.auth_method,
+                        loginTime: new Date().toISOString()
+                    };
+                    localStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(sessionData));
+                    
+                    // Show dashboard
+                    showDashboard();
+                } else {
+                    // Show error
+                    errorDiv.textContent = data.detail || data.message || 'Login failed. Please check your credentials.';
+                    errorDiv.classList.add('visible');
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                errorDiv.textContent = 'Connection error. Please make sure the backend server is running.';
+                errorDiv.classList.add('visible');
+            } finally {
+                loginBtn.disabled = false;
+                loginBtn.textContent = 'Login to Dashboard';
+            }
+        }
+        
+        // Show dashboard and hide login page
+        function showDashboard() {
+            document.getElementById('adminLoginPage').classList.add('hidden');
+            document.getElementById('adminDashboard').classList.add('visible');
+            
+            // Initialize dashboard
+            initMap();
+        }
+        
+        // Logout function
+        function adminLogout() {
+            if (confirm('Are you sure you want to logout?')) {
+                localStorage.removeItem(ADMIN_SESSION_KEY);
+                location.reload();
+            }
+        }
+        
+        // Add logout button to header
+        function addLogoutButton() {
+            const session = localStorage.getItem(ADMIN_SESSION_KEY);
+            if (session) {
+                try {
+                    const sessionData = JSON.parse(session);
+                    const header = document.querySelector('.header .status');
+                    if (header) {
+                        const logoutBtn = document.createElement('button');
+                        logoutBtn.textContent = 'Logout';
+                        logoutBtn.style.cssText = 'margin-left: 20px; padding: 8px 16px; background: #E74C3C; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600;';
+                        logoutBtn.onclick = adminLogout;
+                        header.appendChild(logoutBtn);
+                        
+                        // Add admin name
+                        if (sessionData.name) {
+                            const nameSpan = document.createElement('span');
+                            nameSpan.textContent = ` | ${sessionData.name}`;
+                            nameSpan.style.cssText = 'margin-left: 10px; opacity: 0.9;';
+                            header.appendChild(nameSpan);
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error adding logout button:', e);
+                }
+            }
+        }
+        
+        // Check authentication on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            if (!checkAdminAuth()) {
+                // Not logged in, show login page
+                document.getElementById('adminLoginPage').classList.remove('hidden');
+            } else {
+                // Logged in, add logout button
+                addLogoutButton();
+            }
+        });
+    </script>
+
     <!-- Initialize map and dashboard on page load -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            initMap();
+            // Only init map if already authenticated
+            // Otherwise it will be initialized after login
+            const session = localStorage.getItem('peakmap_admin_session');
+            if (session) {
+                // Map init is now handled in showDashboard()
+                // but keep this here for compatibility
+            }
         });
     </script>
+

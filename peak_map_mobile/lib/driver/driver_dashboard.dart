@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import '../services/api_service.dart';
+import '../services/nfc_service.dart';
 import '../services/passenger_monitor_service.dart';
 import './driver_alerts.dart';
 
@@ -14,8 +17,11 @@ class DriverDashboard extends StatefulWidget {
 }
 
 class _DriverDashboardState extends State<DriverDashboard> {
+  final NFCService _nfcService = NFCService();
+
   bool _isOnline = false;
   bool _isUpdating = false;
+  bool _isProcessingTap = false;
   int _alertsCount = 0;
   List<dynamic> _activeRides = [];
   bool _isLoadingRides = false;
@@ -31,6 +37,10 @@ class _DriverDashboardState extends State<DriverDashboard> {
   List<dynamic> _livePassengers = [];
   bool _isLoadingPassengerCount = false;
 
+    // Tap events feed
+    List<Map<String, dynamic>> _tapEvents = [];
+    bool _isLoadingTapEvents = false;
+
   @override
   void initState() {
     super.initState();
@@ -38,10 +48,12 @@ class _DriverDashboardState extends State<DriverDashboard> {
     _loadAlertCount();
     _loadActiveRides();
     _loadLivePassengerCount();
+      _loadTapEvents();
     // Auto-refresh rides and passenger count every 5 seconds
     _refreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       _loadActiveRides();
       _loadLivePassengerCount();
+        _loadTapEvents();
     });
     
     // Monitor passenger issues
@@ -133,6 +145,43 @@ class _DriverDashboardState extends State<DriverDashboard> {
     }
   }
 
+    /// Load recent tap-in/tap-out events
+    Future<void> _loadTapEvents() async {
+      if (_isLoadingTapEvents) return; // Prevent duplicate calls
+    
+      setState(() => _isLoadingTapEvents = true);
+    
+      try {
+        final data = await ApiService.getDriverTapEvents(widget.driverId, limit: 15);
+        if (!mounted) return;
+        setState(() {
+          _tapEvents = List<Map<String, dynamic>>.from(data['tap_events'] ?? []);
+          _isLoadingTapEvents = false;
+        });
+      } catch (e) {
+        print('Error loading tap events: $e');
+        if (!mounted) return;
+        setState(() {
+          _tapEvents = [];
+          _isLoadingTapEvents = false;
+        });
+      }
+    }
+
+  String _getPassengerLoadCondition(int count) {
+    if (count < 20) return 'Light';
+    if (count < 50) return 'Moderate';
+    if (count < 100) return 'Full';
+    return 'Over Capacity';
+  }
+
+  Color _getPassengerLoadColor(int count) {
+    if (count < 20) return const Color(0xFF2E7D32);
+    if (count < 50) return const Color(0xFFF57C00);
+    if (count < 100) return const Color(0xFFC62828);
+    return const Color(0xFF7B1FA2);
+  }
+
   /// Start monitoring passenger no-shows and missed drop-offs
   void _startPassengerMonitoring() {
     _passengerMonitorSubscription = PassengerMonitorService.monitorPassengers(widget.driverId).listen(
@@ -184,7 +233,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    isNoShow ? '⚠️ NO-SHOW PASSENGER' : '❌ MISSED DROP-OFF',
+                    isNoShow ? 'NO-SHOW PASSENGER' : 'MISSED DROP-OFF',
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
@@ -230,7 +279,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(isOnline ? '🟢 You are now ONLINE' : '🔴 You are now OFFLINE'),
+            content: Text(isOnline ? 'You are now ONLINE' : 'You are now OFFLINE'),
             backgroundColor: isOnline ? Colors.green : Colors.orange,
           ),
         );
@@ -253,8 +302,344 @@ class _DriverDashboardState extends State<DriverDashboard> {
     }
   }
 
+  /// Scan NFC card and resolve passenger account automatically.
+  Future<Map<String, String>?> _scanPassengerCardAndResolveUser({required bool isTapIn}) async {
+    try {
+      final nfcAvailable = await _nfcService.isNFCAvailable();
+      if (!nfcAvailable) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                isTapIn
+                    ? 'NFC unavailable. Use an NFC-enabled phone for automatic tap-in.'
+                    : 'NFC unavailable. Use an NFC-enabled phone for automatic tap-out.',
+              ),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return null;
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(isTapIn ? 'Tap passenger card for entry...' : 'Tap passenger card for exit...'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+
+      final cardData = await _nfcService.readCard();
+      if (cardData == null) {
+        return null;
+      }
+
+      final cardUid = cardData.cardId.trim().toUpperCase();
+      if (cardUid.isEmpty || cardUid == 'UNKNOWN') {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Could not read card UID. Please tap again.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return null;
+      }
+
+      final cardPayload = await ApiService.getCardTapInfo(cardUid);
+      if (cardPayload['success'] != true || cardPayload['registered'] != true) {
+        if (mounted) {
+          final msg = (cardPayload['message'] ?? 'Card is not registered').toString();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(msg), backgroundColor: Colors.red),
+          );
+        }
+        return null;
+      }
+
+      final user = (cardPayload['user'] as Map?)?.cast<String, dynamic>();
+      final userId = user?['user_id']?.toString().trim();
+      if (userId == null || userId.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Card is not linked to a passenger account.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return null;
+      }
+
+      return {
+        'user_id': userId,
+        'card_uid': cardUid,
+        'user_name': (user?['name'] ?? '').toString(),
+      };
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('NFC scan failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return null;
+    }
+  }
+
+  /// Calculate distance between two GPS coordinates (in meters)
+  double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+    const earthRadiusM = 6371000;
+    final dLat = _degreesToRadians(lat2 - lat1);
+    final dLon = _degreesToRadians(lon2 - lon1);
+    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(_degreesToRadians(lat1)) *
+            math.cos(_degreesToRadians(lat2)) *
+            math.sin(dLon / 2) *
+            math.sin(dLon / 2);
+    final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+    return earthRadiusM * c;
+  }
+
+  double _degreesToRadians(double degrees) => degrees * math.pi / 180;
+
+  /// Find nearest station to current GPS coordinates
+  Future<int?> _findNearestStation(double latitude, double longitude) async {
+    try {
+      final stations = await ApiService.getStations();
+      if (stations.isEmpty) return null;
+
+      int? nearestStationId;
+      double minDistance = double.infinity;
+
+      for (final station in stations) {
+        final stationLat = (station['latitude'] as num).toDouble();
+        final stationLon = (station['longitude'] as num).toDouble();
+        final distance = _calculateDistance(latitude, longitude, stationLat, stationLon);
+        
+        if (distance < minDistance) {
+          minDistance = distance;
+          nearestStationId = station['id'] as int;
+        }
+      }
+
+      return nearestStationId;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error finding station: $e')),
+        );
+      }
+      return null;
+    }
+  }
+
+  /// Get current device location
+  Future<Position?> _getCurrentLocation() async {
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Please enable location services')),
+          );
+        }
+        return null;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Location permission denied')),
+          );
+        }
+        return null;
+      }
+
+      if (permission == LocationPermission.whileInUse ||
+          permission == LocationPermission.always) {
+        return await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.best,
+          timeLimit: const Duration(seconds: 10),
+        );
+      }
+
+      return null;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Location error: $e')),
+        );
+      }
+      return null;
+    }
+  }
+
+  String _formatPeso(dynamic value) {
+    final amount = (value is num) ? value.toDouble() : double.tryParse(value?.toString() ?? '0') ?? 0.0;
+    return 'PHP ${amount.toStringAsFixed(2)}';
+  }
+
+  String _buildTapResultMessage({
+    required bool isTapIn,
+    required int stationId,
+    required Map<String, dynamic> result,
+  }) {
+    final success = result['success'] == true;
+    final status = (result['status'] ?? '').toString();
+
+    if (!success && status.contains('insufficient_balance')) {
+      final balance = _formatPeso(result['balance']);
+      final required = _formatPeso(result['required'] ?? result['fare_amount']);
+      final mode = isTapIn ? 'TAP IN DENIED' : 'TAP OUT DENIED';
+      return '$mode\nInsufficient balance\nAvailable: $balance\nRequired: $required';
+    }
+
+    if (success && !isTapIn) {
+      final fare = _formatPeso(result['fare_amount']);
+      final previous = _formatPeso(result['previous_balance']);
+      final updated = _formatPeso(result['new_balance']);
+      final fromStation = (result['from_station_id'] ?? '-').toString();
+      final toStation = (result['to_station_id'] ?? stationId).toString();
+      final txId = (result['fare_transaction_id'] ?? '-').toString();
+      return 'Tap-out successful\nFare deducted: $fare\nBalance: $previous -> $updated\nRoute: Station $fromStation -> $toStation\nTransaction ID: $txId';
+    }
+
+    if (success && isTapIn) {
+      final balance = _formatPeso(result['balance'] ?? result['current_balance']);
+      final minFareRaw = result['minimum_required_fare'];
+      final minFareText = minFareRaw == null ? 'N/A' : _formatPeso(minFareRaw);
+      return 'Tap-in successful\nStation detected: $stationId\nCurrent balance: $balance\nMinimum fare needed: $minFareText';
+    }
+
+    return (result['message'] ?? result['error'] ?? 'Request completed').toString();
+  }
+
+  Future<void> _handleTapAction({required bool isTapIn}) async {
+    if (_isProcessingTap) return;
+
+    // Step 1: Scan passenger card and resolve user automatically
+    final passenger = await _scanPassengerCardAndResolveUser(isTapIn: isTapIn);
+    if (passenger == null || !mounted) return;
+
+    final userId = (passenger['user_id'] ?? '').trim();
+    final cardUid = (passenger['card_uid'] ?? '').trim();
+    if (userId.isEmpty || cardUid.isEmpty) return;
+
+    setState(() => _isProcessingTap = true);
+
+    try {
+      // Step 2: Get current GPS location
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Getting GPS location...'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+
+      final position = await _getCurrentLocation();
+      if (position == null || !mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not get location'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        setState(() => _isProcessingTap = false);
+        return;
+      }
+
+      // Step 3: Find nearest station automatically
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Finding nearest station...'),
+          duration: Duration(seconds: 1),
+        ),
+      );
+
+      final stationId = await _findNearestStation(position.latitude, position.longitude);
+      if (stationId == null || !mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not find nearby station'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        setState(() => _isProcessingTap = false);
+        return;
+      }
+
+      // Step 4: Perform tap-in/out with auto-detected station
+      final result = isTapIn
+          ? await ApiService.tapInPassenger(
+              userId: userId,
+              busId: widget.driverId.toString(),
+              driverId: widget.driverId.toString(),
+              stationId: stationId,
+              cardUid: cardUid,
+            )
+          : await ApiService.tapOutPassenger(
+              userId: userId,
+              busId: widget.driverId.toString(),
+              driverId: widget.driverId.toString(),
+              stationId: stationId,
+              cardUid: cardUid,
+            );
+
+      if (!mounted) return;
+
+      final success = result['success'] == true;
+      final status = (result['status'] ?? '').toString();
+      final message = _buildTapResultMessage(
+        isTapIn: isTapIn,
+        stationId: stationId,
+        result: result,
+      );
+
+      final snackColor = status.contains('insufficient_balance')
+          ? Colors.deepOrange
+          : (success ? Colors.green : Colors.red);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: snackColor,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+
+      await _loadLivePassengerCount();
+      await _loadTapEvents();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Tap request failed: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isProcessingTap = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final loadCondition = _getPassengerLoadCondition(_livePassengerCount);
+    final loadColor = _getPassengerLoadColor(_livePassengerCount);
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: SingleChildScrollView(
@@ -341,6 +726,130 @@ class _DriverDashboardState extends State<DriverDashboard> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
+                                  // Recent Tap Events Section
+                                  if (_tapEvents.isNotEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(16),
+                                        decoration: BoxDecoration(
+                                          color: Colors.blue.shade50,
+                                          borderRadius: BorderRadius.circular(16),
+                                          border: Border.all(color: Colors.blue.shade200),
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                              children: [
+                                                const Text(
+                                                  'Recent Boarding Activity',
+                                                  style: TextStyle(
+                                                    fontSize: 14,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Colors.black87,
+                                                  ),
+                                                ),
+                                                Text(
+                                                  '${_tapEvents.length} events',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.blue.shade600,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 12),
+                                            SizedBox(
+                                              height: 200,
+                                              child: ListView.builder(
+                                                itemCount: _tapEvents.length,
+                                                shrinkWrap: true,
+                                                physics: const AlwaysScrollableScrollPhysics(),
+                                                itemBuilder: (context, index) {
+                                                  final event = _tapEvents[index];
+                                                  final timestamp = event['timestamp'] ?? '';
+                                                  final userId = event['user_id'] ?? 'Unknown';
+                                                  final method = event['method'] ?? 'unknown';
+                                                  final isPayment = method != 'tap_in_nfc';
+                            
+                                                  String timeText = 'moments ago';
+                                                  try {
+                                                    final eventTime = DateTime.parse(timestamp);
+                                                    final diff = DateTime.now().difference(eventTime);
+                                                    if (diff.inSeconds < 60) {
+                                                      timeText = '${diff.inSeconds}s ago';
+                                                    } else if (diff.inMinutes < 60) {
+                                                      timeText = '${diff.inMinutes}m ago';
+                                                    } else {
+                                                      timeText = '${diff.inHours}h ago';
+                                                    }
+                                                  } catch (_) {}
+                            
+                                                  return Container(
+                                                    margin: const EdgeInsets.only(bottom: 8),
+                                                    padding: const EdgeInsets.all(10),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.white,
+                                                      borderRadius: BorderRadius.circular(10),
+                                                    ),
+                                                    child: Row(
+                                                      children: [
+                                                        Container(
+                                                          padding: const EdgeInsets.all(8),
+                                                          decoration: BoxDecoration(
+                                                            color: isPayment ? Colors.green.shade100 : Colors.blue.shade100,
+                                                            shape: BoxShape.circle,
+                                                          ),
+                                                          child: Icon(
+                                                            isPayment ? Icons.payments : Icons.nfc,
+                                                            color: isPayment ? Colors.green.shade700 : Colors.blue.shade700,
+                                                            size: 16,
+                                                          ),
+                                                        ),
+                                                        const SizedBox(width: 10),
+                                                        Expanded(
+                                                          child: Column(
+                                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                                            children: [
+                                                              Text(
+                                                                'User $userId',
+                                                                style: const TextStyle(
+                                                                  fontSize: 12,
+                                                                  fontWeight: FontWeight.bold,
+                                                                ),
+                                                              ),
+                                                              Text(
+                                                                isPayment ? 'Payment: $method' : 'Tapped In (NFC)',
+                                                                style: TextStyle(
+                                                                  fontSize: 11,
+                                                                  color: Colors.grey.shade600,
+                                                                ),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                        Text(
+                                                          timeText,
+                                                          style: TextStyle(
+                                                            fontSize: 10,
+                                                            color: Colors.grey.shade500,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  );
+                                                },
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+
+                                  const SizedBox(height: 20),
+
                           const Text(
                             'Accept Passengers',
                             style: TextStyle(
@@ -370,12 +879,12 @@ class _DriverDashboardState extends State<DriverDashboard> {
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [Colors.orange.shade400, Colors.orange.shade600],
+                    colors: [loadColor.withOpacity(0.75), loadColor],
                   ),
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.orange.withOpacity(0.3),
+                      color: loadColor.withOpacity(0.3),
                       blurRadius: 8,
                       offset: const Offset(0, 4),
                     ),
@@ -385,7 +894,16 @@ class _DriverDashboardState extends State<DriverDashboard> {
                   color: Colors.transparent,
                   child: InkWell(
                     borderRadius: BorderRadius.circular(16),
-                    onTap: _livePassengers.isEmpty ? null : () {
+                    onTap: () {
+                      if (_livePassengers.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('No onboard passengers yet. Use Tap In to register entry.'),
+                          ),
+                        );
+                        return;
+                      }
+
                       // Show passenger details modal
                       showModalBottomSheet(
                         context: context,
@@ -403,8 +921,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
                             children: [
                               Row(
                                 children: [
-                                  const Icon(Icons.people, color: Colors.orange),
-                                  const SizedBox(width: 8),
                                   Text(
                                     'Passengers Onboard ($_livePassengerCount)',
                                     style: const TextStyle(
@@ -439,15 +955,15 @@ class _DriverDashboardState extends State<DriverDashboard> {
                                                   vertical: 4,
                                                 ),
                                                 decoration: BoxDecoration(
-                                                  color: Colors.orange.shade100,
+                                                  color: Colors.grey.shade200,
                                                   borderRadius: BorderRadius.circular(6),
                                                 ),
                                                 child: Text(
-                                                  '👤 ${passenger['user_id']}',
+                                                  'User ${passenger['user_id']}',
                                                   style: TextStyle(
                                                     fontSize: 12,
                                                     fontWeight: FontWeight.bold,
-                                                    color: Colors.orange.shade700,
+                                                    color: Colors.black87,
                                                   ),
                                                 ),
                                               ),
@@ -475,19 +991,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
                     },
                     child: Row(
                       children: [
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.people,
-                            color: Colors.white,
-                            size: 32,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -511,35 +1014,136 @@ class _DriverDashboardState extends State<DriverDashboard> {
                                 ),
                               ),
                               const SizedBox(height: 2),
-                              Row(
-                                children: [
-                                  Icon(
-                                    Icons.tap_and_play,
-                                    size: 12,
-                                    color: Colors.white.withOpacity(0.8),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    'Live from tap-in/tap-out',
-                                    style: TextStyle(
-                                      color: Colors.white.withOpacity(0.8),
-                                      fontSize: 10,
-                                    ),
-                                  ),
-                                ],
+                              Text(
+                                'Load: $loadCondition',
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.9),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ],
                           ),
                         ),
-                        if (_livePassengers.isNotEmpty)
-                          Icon(
-                            Icons.arrow_forward_ios,
-                            color: Colors.white.withOpacity(0.7),
-                            size: 16,
-                          ),
                       ],
                     ),
                   ),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            // Recent tap activity feed (always visible)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.blueGrey.shade50,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.blueGrey.shade100),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Recent Tap Activity',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        Text(
+                          '${_tapEvents.length} events',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.blueGrey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    if (_isLoadingTapEvents)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 10),
+                        child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                      )
+                    else if (_tapEvents.isEmpty)
+                      const Text(
+                        'No tap-in or tap-out events yet. Passenger tap records will show here in real time.',
+                        style: TextStyle(fontSize: 13, color: Colors.black87),
+                      )
+                    else
+                      SizedBox(
+                        height: 190,
+                        child: ListView.builder(
+                          itemCount: _tapEvents.length,
+                          itemBuilder: (context, index) {
+                            final event = _tapEvents[index];
+                            final type = (event['type'] ?? '').toString();
+                            final isTapIn = type == 'tap_in';
+                            final isTapOut = type == 'tap_out';
+                            final isFare = type == 'fare';
+                            final userId = (event['user_id'] ?? 'unknown').toString();
+                            final station = (event['station_id'] ?? 'N/A').toString();
+                            final fromStation = (event['from_station_id'] ?? '-').toString();
+                            final toStation = (event['to_station_id'] ?? '-').toString();
+                            final fareAmount = (event['amount'] is num)
+                                ? (event['amount'] as num).toDouble()
+                                : double.tryParse((event['amount'] ?? '0').toString()) ?? 0.0;
+                            final when = (event['timestamp'] ?? '').toString();
+
+                            final title = isTapIn
+                                ? 'Tap In'
+                                : (isTapOut ? 'Tap Out' : 'Fare Paid');
+
+                            final icon = isTapIn
+                                ? Icons.login
+                                : (isTapOut ? Icons.logout : Icons.payments);
+
+                            final color = isTapIn
+                                ? Colors.green
+                                : (isTapOut ? Colors.orange : Colors.blue);
+
+                            final details = isFare
+                              ? 'Fare PHP ${fareAmount.toStringAsFixed(2)} - User $userId - Route $fromStation->$toStation'
+                              : '$title - User $userId - Station $station';
+
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: Colors.blueGrey.shade100),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(icon, color: color, size: 18),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      details,
+                                      style: const TextStyle(fontSize: 12, color: Colors.black87),
+                                    ),
+                                  ),
+                                  Text(
+                                    when.length >= 19 ? when.substring(11, 19) : '--:--:--',
+                                    style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade600),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ),
@@ -866,6 +1470,28 @@ class _DriverDashboardState extends State<DriverDashboard> {
                     children: [
                       Expanded(
                         child: _buildActionButton(
+                          _isProcessingTap ? 'Processing...' : 'Tap In (Scan Card)',
+                          Icons.login,
+                          Colors.green,
+                          _isProcessingTap ? () {} : () => _handleTapAction(isTapIn: true),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildActionButton(
+                          _isProcessingTap ? 'Please wait' : 'Tap Out (Scan Card)',
+                          Icons.logout,
+                          Colors.orange,
+                          _isProcessingTap ? () {} : () => _handleTapAction(isTapIn: false),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildActionButton(
                           'Report Issue',
                           Icons.report_problem,
                           Colors.red,
@@ -878,28 +1504,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
                           'Break',
                           Icons.coffee,
                           Colors.brown,
-                          () {},
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildActionButton(
-                          'Fuel Stop',
-                          Icons.local_gas_station,
-                          Colors.orange,
-                          () {},
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _buildActionButton(
-                          'Help',
-                          Icons.help_outline,
-                          Colors.blue,
                           () {},
                         ),
                       ),

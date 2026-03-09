@@ -35,6 +35,15 @@
             margin-bottom: 30px;
         }
 
+        .header-logo {
+            width: 72px;
+            height: 72px;
+            border-radius: 10px;
+            background: #f4f6fa;
+            padding: 6px;
+            margin-bottom: 10px;
+        }
+
         .header h1 {
             color: #333;
             font-size: 28px;
@@ -205,12 +214,13 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>🎫 RFID Card Tap</h1>
+            <img src="peakmap_logo.png" alt="PeakMap Logo" class="header-logo">
+            <h1>RFID Card Tap</h1>
             <p>Tap or enter card UID to check owner & balance</p>
         </div>
 
         <div class="tap-area" id="tapArea" onclick="focusInput()">
-            <span class="tap-icon">📡</span>
+            <span class="tap-icon">RFID</span>
             <span class="tap-text">Tap Card Here</span>
         </div>
 
@@ -225,9 +235,7 @@
             >
         </div>
 
-        <button class="btn" onclick="tapCard()">
-            🔍 Check Card
-        </button>
+        <button class="btn" onclick="tapCard()">Check Card</button>
 
         <div class="result" id="result"></div>
     </div>
@@ -285,7 +293,7 @@
             resultDiv.className = 'result success';
             resultDiv.innerHTML = `
                 <div class="result-header">
-                    ✅ Card Recognized
+                    Card Recognized
                 </div>
                 
                 <div class="info-row">
@@ -306,17 +314,17 @@
                 ${user.user_id ? `
                 <div style="border-top: 2px solid #28a745; margin: 15px 0; padding-top: 15px;">
                     <div class="info-row">
-                        <span class="info-label">👤 Owner Name</span>
+                        <span class="info-label">Owner Name</span>
                         <span class="info-value">${user.name || 'N/A'}</span>
                     </div>
                     
                     <div class="info-row">
-                        <span class="info-label">📧 Email</span>
+                        <span class="info-label">Email</span>
                         <span class="info-value">${user.email || 'N/A'}</span>
                     </div>
 
                     <div class="info-row">
-                        <span class="info-label">🆔 User ID</span>
+                        <span class="info-label">User ID</span>
                         <span class="info-value">${user.user_id || 'N/A'}</span>
                     </div>
                 </div>
@@ -328,7 +336,7 @@
                 </div>
                 ` : `
                 <div style="color: #856404; background: #fff3cd; padding: 15px; border-radius: 8px; margin-top: 15px;">
-                    ⚠️ Card is registered but not linked to any user
+                    Card is registered but not linked to any user
                 </div>
                 `}
             `;
@@ -339,7 +347,7 @@
             resultDiv.className = 'result error';
             resultDiv.innerHTML = `
                 <div class="result-header">
-                    ❌ Error
+                    Error
                 </div>
                 <p style="margin-top: 10px; color: #721c24;">${message}</p>
             `;

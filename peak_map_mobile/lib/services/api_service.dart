@@ -1,20 +1,12 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'network_config.dart';
 
 /// API Service for PEAK MAP Backend
 /// 
 /// Connects to local FastAPI backend on port 8000
 class ApiService {
-  // Backend URL - dynamically set based on environment
-  static String get baseUrl {
-    try {
-      // For physical mobile device: use computer's local network IP
-      return 'http://192.168.5.32:8000';
-    } catch (e) {
-      // Fallback for Android emulator
-      return 'http://10.0.2.2:8000';
-    }
-  }
+  static String get baseUrl => NetworkConfig.baseUrl;
   
   /// Send GPS update from driver
   static Future<Map<String, dynamic>> updateGPS({
@@ -391,6 +383,45 @@ class ApiService {
       throw Exception('Error tapping in passenger: $e');
     }
   }
+
+  /// Tap out passenger on bus exit via NFC/RFID card
+  static Future<Map<String, dynamic>> tapOutPassenger({
+    required String userId,
+    required String busId,
+    required String driverId,
+    required int stationId,
+    String? cardUid,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/payments/tap-out'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'user_id': userId,
+          'bus_id': busId,
+          'driver_id': driverId,
+          'station_id': stationId,
+          'card_uid': cardUid,
+        }),
+      );
+
+      final payload = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        return payload;
+      }
+
+      if (payload is Map<String, dynamic>) {
+        return {
+          'success': false,
+          ...payload,
+        };
+      }
+
+      throw Exception('Failed to tap out: ${response.statusCode}');
+    } catch (e) {
+      throw Exception('Error tapping out passenger: $e');
+    }
+  }
   
   /// Get driver's active rides
   static Future<List<dynamic>> getDriverRides(int driverId) async {
@@ -473,6 +504,23 @@ class ApiService {
       throw Exception("Error getting passenger count: $e");
     }
   }
+
+    /// Get recent tap-in/tap-out events for driver
+    static Future<Map<String, dynamic>> getDriverTapEvents(int driverId, {int limit = 20}) async {
+      try {
+        final response = await http.get(
+          Uri.parse("$baseUrl/drivers/$driverId/tap-events?limit=$limit"),
+        );
+      
+        if (response.statusCode == 200) {
+          return jsonDecode(response.body);
+        } else {
+          throw Exception("Failed to get tap events: ${response.statusCode}");
+        }
+      } catch (e) {
+        throw Exception("Error getting tap events: $e");
+      }
+    }
 
   /// Load balance to user account via NFC (Admin Only)
   static Future<Map<String, dynamic>> loadBalance({

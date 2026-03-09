@@ -6,9 +6,13 @@ from sqlalchemy.orm import Session
 from typing import Optional
 
 from app.database import get_db
+from app.models.fare import Fare
 from app.models.payment import Payment
 from app.models.ride import Ride
+from app.models.station import Station
+from app.models.user import User
 from app.services.fare_service import get_fare
+from app.supabase_client import get_supabase_client, is_supabase_available
 
 router = APIRouter(prefix="/payments", tags=["Payments"])
 
@@ -518,7 +522,7 @@ class FareDeductPayload(BaseModel):
 
 
 class TapInPayload(BaseModel):
-    user_id: str
+    user_id: Optional[str] = None
     bus_id: str
     driver_id: str
     station_id: int
@@ -526,7 +530,7 @@ class TapInPayload(BaseModel):
 
 
 class TapOutPayload(BaseModel):
-    user_id: str
+    user_id: Optional[str] = None
     bus_id: str
     driver_id: str
     station_id: int
@@ -557,11 +561,69 @@ def _is_card_blocked(db: Session, user_id: str) -> bool:
     ).first() is not None
 
 
+def _resolve_user_id_from_card_uid(card_uid: str) -> Optional[str]:
+    """Resolve user_id from Supabase rfid_cards table for NFC-only tap flows."""
+    if not card_uid or not is_supabase_available():
+        return None
+
+    normalized_uid = card_uid.strip().upper()
+    if not normalized_uid:
+        return None
+
+    try:
+        supabase = get_supabase_client()
+        result = (
+            supabase.table("rfid_cards")
+            .select("user_id")
+            .eq("card_uid", normalized_uid)
+            .limit(1)
+            .execute()
+        )
+
+        rows = getattr(result, "data", None)
+        if isinstance(rows, list) and rows:
+            user_id = rows[0].get("user_id")
+            return str(user_id) if user_id is not None else None
+
+        if isinstance(result, dict):
+            data = result.get("data")
+            if isinstance(data, list) and data:
+                user_id = data[0].get("user_id")
+                return str(user_id) if user_id is not None else None
+    except Exception:
+        return None
+
+    return None
+
+
+def _get_min_entry_fare(db: Session, from_station_id: int) -> float | None:
+    """Get the minimum possible fare from a boarding station to any other station."""
+    min_fare = (
+        db.query(Fare)
+        .filter(Fare.from_station == from_station_id, Fare.to_station != from_station_id)
+        .order_by(Fare.amount.asc())
+        .first()
+    )
+    return float(min_fare.amount) if min_fare else None
+
+
 @router.post("/tap-in")
 def tap_in_passenger(payload: TapInPayload, db: Session = Depends(get_db)):
     """Passenger taps in when entering a bus via an NFC/RFID scanner."""
     try:
-        if _is_card_blocked(db, payload.user_id):
+        effective_user_id = (payload.user_id or "").strip()
+        if not effective_user_id and payload.card_uid:
+            effective_user_id = _resolve_user_id_from_card_uid(payload.card_uid) or ""
+
+        if not effective_user_id:
+            return {
+                "success": False,
+                "error": "Unable to resolve passenger from card. Register/link card first.",
+                "status": "entry_denied_unregistered_card",
+                "card_uid": payload.card_uid,
+            }
+
+        if _is_card_blocked(db, effective_user_id):
             return {
                 "success": False,
                 "error": "Card is blocked",
@@ -570,7 +632,7 @@ def tap_in_passenger(payload: TapInPayload, db: Session = Depends(get_db)):
 
         # Prevent rapid duplicate tap-ins (same user within 8 seconds)
         recent_tap_in = db.query(Payment).filter(
-            Payment.user_id == payload.user_id,
+            Payment.user_id == effective_user_id,
             Payment.method == "tap_in_nfc",
             Payment.created_at >= datetime.utcnow() - timedelta(seconds=8)
         ).order_by(Payment.created_at.desc()).first()
@@ -584,7 +646,7 @@ def tap_in_passenger(payload: TapInPayload, db: Session = Depends(get_db)):
 
         # Only one open trip at a time
         open_trip = db.query(Payment).filter(
-            Payment.user_id == payload.user_id,
+            Payment.user_id == effective_user_id,
             Payment.method == "tap_in_nfc",
             Payment.status == "pending",
         ).order_by(Payment.created_at.desc()).first()
@@ -597,22 +659,80 @@ def tap_in_passenger(payload: TapInPayload, db: Session = Depends(get_db)):
                 "open_trip_reference": open_trip.reference,
             }
 
-        balance = _calculate_user_balance(db, payload.user_id)
+        balance = _calculate_user_balance(db, effective_user_id)
+        minimum_required_fare = _get_min_entry_fare(db, payload.station_id)
+
+        if minimum_required_fare is not None and balance < minimum_required_fare:
+            return {
+                "success": False,
+                "error": (
+                    f"Insufficient balance for entry. Available: PHP {balance:.2f}, "
+                    f"Minimum required: PHP {minimum_required_fare:.2f}"
+                ),
+                "status": "entry_denied_insufficient_balance",
+                "balance": float(balance),
+                "required": float(minimum_required_fare),
+                "station_id": payload.station_id,
+            }
         
         # Store card_uid in reference for matching on tap-out
         card_uid = payload.card_uid or "UNKNOWN"
 
         tap_in = Payment(
-            user_id=payload.user_id,
+            user_id=effective_user_id,
             ride_id=0,
             amount=0.0,
             method="tap_in_nfc",
             status="pending",  # pending = open trip
-            reference=f"TAPIN-{card_uid}-{payload.user_id}-{payload.bus_id}-{payload.station_id}-{datetime.utcnow().timestamp()}",
+            reference=f"TAPIN-{card_uid}-{effective_user_id}-{payload.bus_id}-{payload.station_id}-{datetime.utcnow().timestamp()}",
             paid_at=None,
         )
 
+        created_ride_id = None
+        ride_sync_warning = None
+
         db.add(tap_in)
+        db.flush()
+
+        # Keep ride list in sync with NFC taps so trips/routes appear in driver app.
+        try:
+            passenger_id = int(effective_user_id)
+            driver_id = int(payload.driver_id)
+
+            passenger = db.query(User).filter(User.id == passenger_id).first()
+            driver = db.query(User).filter(User.id == driver_id, User.role == "driver").first()
+            station = db.query(Station).filter(Station.id == payload.station_id).first()
+
+            if passenger and driver and station:
+                open_ride = (
+                    db.query(Ride)
+                    .filter(
+                        Ride.passenger_id == passenger_id,
+                        Ride.driver_id == driver_id,
+                        Ride.status == "ongoing",
+                    )
+                    .order_by(Ride.started_at.desc())
+                    .first()
+                )
+
+                if open_ride:
+                    created_ride_id = open_ride.id
+                else:
+                    ride = Ride(
+                        passenger_id=passenger_id,
+                        driver_id=driver_id,
+                        station_id=payload.station_id,
+                        fare_amount=0.0,
+                        status="ongoing",
+                    )
+                    db.add(ride)
+                    db.flush()
+                    created_ride_id = ride.id
+            else:
+                ride_sync_warning = "Ride not created: missing passenger, driver, or station"
+        except ValueError:
+            ride_sync_warning = "Ride not created: user_id/driver_id must be numeric"
+
         db.commit()
         db.refresh(tap_in)
 
@@ -621,12 +741,16 @@ def tap_in_passenger(payload: TapInPayload, db: Session = Depends(get_db)):
             "message": "Tap-in successful",
             "status": "entry_granted",
             "tap_in_id": tap_in.id,
-            "user_id": payload.user_id,
+            "user_id": effective_user_id,
             "bus_id": payload.bus_id,
             "driver_id": payload.driver_id,
             "station_id": payload.station_id,
             "card_uid": payload.card_uid,
             "current_balance": balance,
+            "balance": float(balance),
+            "minimum_required_fare": float(minimum_required_fare) if minimum_required_fare is not None else None,
+            "ride_id": created_ride_id,
+            "ride_sync_warning": ride_sync_warning,
             "timestamp": str(tap_in.created_at),
         }
     except Exception as e:
@@ -642,9 +766,21 @@ def tap_in_passenger(payload: TapInPayload, db: Session = Depends(get_db)):
 def tap_out_passenger(payload: TapOutPayload, db: Session = Depends(get_db)):
     """Passenger taps out when exiting a bus; fare is computed and deducted."""
     try:
+        effective_user_id = (payload.user_id or "").strip()
+        if not effective_user_id and payload.card_uid:
+            effective_user_id = _resolve_user_id_from_card_uid(payload.card_uid) or ""
+
+        if not effective_user_id:
+            return {
+                "success": False,
+                "error": "Unable to resolve passenger from card. Register/link card first.",
+                "status": "exit_denied_unregistered_card",
+                "card_uid": payload.card_uid,
+            }
+
         # Prevent rapid duplicate tap-outs
         recent_tap_out = db.query(Payment).filter(
-            Payment.user_id == payload.user_id,
+            Payment.user_id == effective_user_id,
             Payment.method == "tap_out_nfc",
             Payment.created_at >= datetime.utcnow() - timedelta(seconds=8)
         ).order_by(Payment.created_at.desc()).first()
@@ -657,7 +793,7 @@ def tap_out_passenger(payload: TapOutPayload, db: Session = Depends(get_db)):
             }
 
         open_trip = db.query(Payment).filter(
-            Payment.user_id == payload.user_id,
+            Payment.user_id == effective_user_id,
             Payment.method == "tap_in_nfc",
             Payment.status == "pending",
         ).order_by(Payment.created_at.desc()).first()
@@ -719,43 +855,72 @@ def tap_out_passenger(payload: TapOutPayload, db: Session = Depends(get_db)):
                 "status": "fare_not_found",
             }
 
-        current_balance = _calculate_user_balance(db, payload.user_id)
+        current_balance = _calculate_user_balance(db, effective_user_id)
         if current_balance < fare_amount:
             return {
                 "success": False,
-                "error": f"Insufficient balance. Available: ₱{current_balance}, Required: ₱{fare_amount}",
+                "error": f"Insufficient balance. Available: PHP {current_balance:.2f}, Required fare: PHP {fare_amount:.2f}",
                 "status": "exit_denied_insufficient_balance",
                 "balance": float(current_balance),
                 "required": float(fare_amount),
+                "fare_amount": float(fare_amount),
+                "from_station_id": from_station_id,
+                "to_station_id": payload.station_id,
             }
 
         # Deduct fare
         card_uid = payload.card_uid or tap_in_card_uid or "UNKNOWN"
         
         fare_payment = Payment(
-            user_id=payload.user_id,
+            user_id=effective_user_id,
             ride_id=0,
             amount=float(fare_amount),
             method="bus_fare_nfc",
             status="paid",
-            reference=f"BUSFARE-{card_uid}-{payload.user_id}-{payload.bus_id}-{from_station_id}-{payload.station_id}-{datetime.utcnow().timestamp()}",
+            reference=f"BUSFARE-{card_uid}-{effective_user_id}-{payload.bus_id}-{from_station_id}-{payload.station_id}-{datetime.utcnow().timestamp()}",
             paid_at=datetime.utcnow(),
         )
 
         # Log tap-out event
         tap_out = Payment(
-            user_id=payload.user_id,
+            user_id=effective_user_id,
             ride_id=0,
             amount=0.0,
             method="tap_out_nfc",
             status="paid",
-            reference=f"TAPOUT-{card_uid}-{payload.user_id}-{payload.bus_id}-{payload.station_id}-{datetime.utcnow().timestamp()}",
+            reference=f"TAPOUT-{card_uid}-{effective_user_id}-{payload.bus_id}-{payload.station_id}-{datetime.utcnow().timestamp()}",
             paid_at=datetime.utcnow(),
         )
 
-        # Close open trip
+        # Close open payment trip
         open_trip.status = "paid"
         open_trip.paid_at = datetime.utcnow()
+
+        completed_ride_id = None
+        ride_sync_warning = None
+
+        # Close the latest ongoing ride so active routes are updated after tap-out.
+        try:
+            passenger_id = int(effective_user_id)
+            driver_id = int(payload.driver_id)
+            ongoing_ride = (
+                db.query(Ride)
+                .filter(
+                    Ride.passenger_id == passenger_id,
+                    Ride.driver_id == driver_id,
+                    Ride.status == "ongoing",
+                )
+                .order_by(Ride.started_at.desc())
+                .first()
+            )
+            if ongoing_ride:
+                ongoing_ride.status = "completed"
+                ongoing_ride.ended_at = datetime.utcnow()
+                completed_ride_id = ongoing_ride.id
+            else:
+                ride_sync_warning = "No ongoing ride found to complete"
+        except ValueError:
+            ride_sync_warning = "Ride completion skipped: user_id/driver_id must be numeric"
 
         db.add(fare_payment)
         db.add(tap_out)
@@ -768,7 +933,7 @@ def tap_out_passenger(payload: TapOutPayload, db: Session = Depends(get_db)):
             "success": True,
             "message": "Tap-out successful. Fare deducted.",
             "status": "exit_granted",
-            "user_id": payload.user_id,
+            "user_id": effective_user_id,
             "bus_id": payload.bus_id,
             "driver_id": payload.driver_id,
             "card_uid": card_uid,
@@ -779,6 +944,8 @@ def tap_out_passenger(payload: TapOutPayload, db: Session = Depends(get_db)):
             "previous_balance": float(current_balance),
             "new_balance": float(new_balance),
             "fare_transaction_id": fare_payment.id,
+            "completed_ride_id": completed_ride_id,
+            "ride_sync_warning": ride_sync_warning,
             "timestamp": str(fare_payment.created_at),
         }
     except Exception as e:

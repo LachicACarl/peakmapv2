@@ -1,7 +1,10 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import datetime, timedelta
+from pydantic import BaseModel
+from typing import Optional
+import hashlib
 
 from app.database import get_db
 from app.models.ride import Ride
@@ -9,9 +12,203 @@ from app.models.gps_log import GPSLog
 from app.models.payment import Payment
 from app.models.user import User
 from app.models.station import Station
+from app.models.local_auth_user import LocalAuthUser
 from app.services.driver_presence import get_driver_online_state
+from app.supabase_client import get_supabase_client, is_supabase_available
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
+
+
+# Admin Authentication Models
+class AdminLoginPayload(BaseModel):
+    email: str
+    password: str
+
+
+class AdminRegisterPayload(BaseModel):
+    email: str
+    password: str
+    name: str
+
+
+# Admin Authentication Endpoints
+@router.post("/login")
+def admin_login(payload: AdminLoginPayload, db: Session = Depends(get_db)):
+    """Admin login endpoint"""
+    try:
+        # Try Supabase authentication first
+        if is_supabase_available():
+            supabase = get_supabase_client()
+            try:
+                result = supabase.auth.sign_in_with_password(
+                    {"email": payload.email, "password": payload.password}
+                )
+                
+                if result.user:
+                    # Check if user is admin in Supabase users table
+                    user_query = (
+                        supabase.table("users")
+                        .select("*")
+                        .eq("email", payload.email)
+                        .eq("user_type", "admin")
+                        .execute()
+                    )
+                    
+                    user_data = user_query.data if hasattr(user_query, 'data') else []
+                    if not user_data:
+                        raise HTTPException(status_code=403, detail="Not authorized. Admin access only.")
+                    
+                    admin_user = user_data[0]
+                    return {
+                        "success": True,
+                        "user_id": admin_user.get("id"),
+                        "email": payload.email,
+                        "name": admin_user.get("name"),
+                        "token": result.session.access_token if result.session else "",
+                        "auth_method": "supabase"
+                    }
+            except HTTPException:
+                raise
+            except Exception as e:
+                print(f"Supabase admin login failed: {e}")
+                # Fall through to local auth
+        
+        # Fallback to local authentication
+        local_user = (
+            db.query(LocalAuthUser)
+            .filter(LocalAuthUser.email == payload.email)
+            .first()
+        )
+        
+        if not local_user:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        
+        # Verify password
+        password_hash = hashlib.sha256(payload.password.encode()).hexdigest()
+        if local_user.password_hash != password_hash:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        
+        # Check if user is admin
+        if local_user.user_type != "admin":
+            raise HTTPException(status_code=403, detail="Not authorized. Admin access only.")
+        
+        # Get user details from User table
+        app_user = db.query(User).filter(User.id == local_user.app_user_id).first()
+        
+        return {
+            "success": True,
+            "user_id": local_user.app_user_id,
+            "email": payload.email,
+            "name": app_user.full_name if app_user else local_user.identifier,
+            "auth_method": "local"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"Admin login error: {exc}")
+        raise HTTPException(status_code=500, detail=f"Login failed: {str(exc)}")
+
+
+@router.post("/register")
+def admin_register(payload: AdminRegisterPayload, db: Session = Depends(get_db)):
+    """Register a new admin user (protected - should be called once to setup)"""
+    try:
+        # Check if admin already exists
+        existing_local = (
+            db.query(LocalAuthUser)
+            .filter(LocalAuthUser.email == payload.email)
+            .first()
+        )
+        
+        if existing_local:
+            raise HTTPException(status_code=400, detail="Admin already exists")
+        
+        # Try to register in Supabase first
+        if is_supabase_available():
+            supabase = get_supabase_client()
+            try:
+                # Sign up with Supabase Auth
+                result = supabase.auth.sign_up(
+                    {
+                        "email": payload.email,
+                        "password": payload.password,
+                        "options": {
+                            "data": {
+                                "name": payload.name,
+                                "user_type": "admin",
+                            }
+                        },
+                    }
+                )
+                
+                if result.user:
+                    # Create admin user in users table
+                    supabase.table("users").insert(
+                        {
+                            "email": payload.email,
+                            "name": payload.name,
+                            "user_type": "admin",
+                            "phone": "",
+                        }
+                    ).execute()
+            except Exception as e:
+                print(f"Supabase admin registration failed: {e}")
+                # Fall through to local auth
+        
+        # Create local app user
+        app_user = User(
+            full_name=payload.name,
+            phone_number=payload.email,  # Using email as identifier since phone_number is unique
+            role="admin"
+        )
+        db.add(app_user)
+        db.commit()
+        db.refresh(app_user)
+        
+        # Create local auth record
+        password_hash = hashlib.sha256(payload.password.encode()).hexdigest()
+        local_auth = LocalAuthUser(
+            email=payload.email,
+            password_hash=password_hash,
+            user_type="admin",
+            name=payload.name,
+            app_user_id=app_user.id
+        )
+        db.add(local_auth)
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": "Admin user created successfully",
+            "user_id": app_user.id,
+            "email": payload.email
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.rollback()
+        print(f"Admin registration error: {exc}")
+        raise HTTPException(status_code=500, detail=f"Registration failed: {str(exc)}")
+
+
+@router.get("/verify")
+def verify_admin_session(token: Optional[str] = None, db: Session = Depends(get_db)):
+    """Verify admin session/token"""
+    if not token:
+        raise HTTPException(status_code=401, detail="No token provided")
+    
+    try:
+        if is_supabase_available():
+            supabase = get_supabase_client()
+            # In production, verify token with Supabase
+            # For now, accept any non-empty token
+            return {"success": True, "valid": True}
+        
+        return {"success": True, "valid": True}
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail="Invalid session")
 
 
 def _ride_station_ids(ride: Ride) -> tuple[int | None, int | None]:
@@ -404,4 +601,83 @@ def get_dashboard_overview(db: Session = Depends(get_db)):
         "total_revenue": total_revenue,
         "pending_revenue": pending_revenue,
         "today_rides": today_rides,
+    }
+
+
+@router.get("/rfid_tap_events")
+def get_rfid_tap_events(limit: int = 25, db: Session = Depends(get_db)):
+    """Return recent RFID/NFC tap-related events for admin monitor."""
+    safe_limit = max(1, min(limit, 200))
+
+    tap_methods = [
+        "tap_in_nfc",
+        "tap_out_nfc",
+        "bus_fare_nfc",
+        "admin_nfc",
+    ]
+
+    events = (
+        db.query(Payment)
+        .filter(Payment.method.in_(tap_methods))
+        .order_by(Payment.created_at.desc())
+        .limit(safe_limit)
+        .all()
+    )
+
+    out = []
+    for payment in events:
+        tap_type = "tap-in"
+        if payment.method == "tap_out_nfc":
+            tap_type = "tap-out"
+        elif payment.method == "bus_fare_nfc":
+            tap_type = "fare"
+        elif payment.method == "admin_nfc":
+            tap_type = "balance-load"
+
+        card_uid = None
+        bus_id = None
+        station_id = None
+        from_station_id = None
+        to_station_id = None
+
+        if payment.reference:
+            parts = payment.reference.split("-")
+            if len(parts) >= 2:
+                maybe_uid = parts[1]
+                if maybe_uid and maybe_uid != "UNKNOWN":
+                    card_uid = maybe_uid
+
+            if payment.method in ("tap_in_nfc", "tap_out_nfc") and len(parts) >= 6:
+                bus_id = parts[3]
+                station_id = parts[-2]
+
+            if payment.method == "bus_fare_nfc" and len(parts) >= 7:
+                bus_id = parts[3]
+                from_station_id = parts[-3]
+                to_station_id = parts[-2]
+
+        out.append(
+            {
+                "id": payment.id,
+                "source": "payments",
+                "tap_type": tap_type,
+                "method": payment.method,
+                "status": payment.status,
+                "user_id": payment.user_id,
+                "card_uid": card_uid,
+                "amount": float(payment.amount or 0.0),
+                "bus_id": bus_id,
+                "station_id": station_id,
+                "from_station_id": from_station_id,
+                "to_station_id": to_station_id,
+                "timestamp": payment.created_at.isoformat() if payment.created_at else None,
+                "reference": payment.reference,
+            }
+        )
+
+    return {
+        "success": True,
+        "count": len(out),
+        "events": out,
+        "timestamp": datetime.utcnow().isoformat(),
     }

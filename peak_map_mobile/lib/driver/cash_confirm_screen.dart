@@ -130,9 +130,9 @@ class _CashConfirmScreenState extends State<CashConfirmScreen> {
       );
     }
 
-    final status = _payment!['status'];
-    final amount = _payment!['amount'];
-    final method = _payment!['method'];
+    final status = (_payment!['status'] ?? 'unknown').toString();
+    final amount = (_payment!['amount'] as num?)?.toDouble() ?? 0.0;
+    final method = (_payment!['method'] ?? 'unknown').toString();
 
     return Padding(
       padding: const EdgeInsets.all(20.0),
@@ -183,7 +183,7 @@ class _CashConfirmScreenState extends State<CashConfirmScreen> {
             ),
             const SizedBox(height: 20),
             Text(
-              'Collect ₱$amount from passenger',
+              'Collect ₱${amount.toStringAsFixed(2)} from passenger',
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 20),
             ),

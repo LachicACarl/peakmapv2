@@ -1,4 +1,6 @@
 """Driver management endpoints"""
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -148,9 +150,87 @@ def get_driver_passenger_count(driver_id: int, db: Session = Depends(get_db)):
             "trip_reference": trip.reference,
         })
     
+    passenger_count = len(open_trips)
+    if passenger_count < 20:
+        load_condition = "light"
+    elif passenger_count < 50:
+        load_condition = "moderate"
+    elif passenger_count < 100:
+        load_condition = "full"
+    else:
+        load_condition = "over_capacity"
+
     return {
         "driver_id": driver_id,
-        "passenger_count": len(open_trips),
+        "passenger_count": passenger_count,
+        "load_condition": load_condition,
         "passengers": passengers,
-        "timestamp": __import__("datetime").datetime.utcnow().isoformat(),
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+
+@router.get("/{driver_id}/tap-events", response_model=dict)
+def get_driver_tap_events(driver_id: int, limit: int = 20, db: Session = Depends(get_db)):
+    """Get recent tap-in/tap-out events for a driver."""
+    driver = db.query(User).filter(User.id == driver_id, User.role == "driver").first()
+
+    if not driver:
+        raise HTTPException(status_code=404, detail="Driver not found")
+
+    safe_limit = max(1, min(limit, 100))
+
+    # ride_id is often 0 for NFC tap records, so filter by the driver/bus id encoded in reference.
+    tap_events = (
+        db.query(Payment)
+        .filter(
+            Payment.method.in_(["tap_in_nfc", "tap_out_nfc", "bus_fare_nfc"]),
+            Payment.reference.like(f"%-{driver_id}-%"),
+        )
+        .order_by(Payment.created_at.desc())
+        .limit(safe_limit)
+        .all()
+    )
+
+    events = []
+    for event in tap_events:
+        event_type = "fare"
+        if event.method == "tap_in_nfc":
+            event_type = "tap_in"
+        elif event.method == "tap_out_nfc":
+            event_type = "tap_out"
+
+        station_id = None
+        from_station_id = None
+        to_station_id = None
+        if event.reference:
+            parts = event.reference.split("-")
+            if event.method == "tap_in_nfc" and len(parts) >= 6:
+                station_id = parts[-2]
+            elif event.method == "tap_out_nfc" and len(parts) >= 6:
+                station_id = parts[-2]
+            elif event.method == "bus_fare_nfc" and len(parts) >= 7:
+                from_station_id = parts[-3]
+                to_station_id = parts[-2]
+
+        events.append(
+            {
+                "id": event.id,
+                "user_id": event.user_id,
+                "type": event_type,
+                "method": event.method,
+                "amount": event.amount,
+                "status": event.status,
+                "timestamp": event.created_at.isoformat() if event.created_at else None,
+                "station_id": station_id,
+                "from_station_id": from_station_id,
+                "to_station_id": to_station_id,
+                "reference": event.reference,
+            }
+        )
+
+    return {
+        "driver_id": driver_id,
+        "tap_events": events,
+        "count": len(events),
+        "timestamp": datetime.utcnow().isoformat(),
     }

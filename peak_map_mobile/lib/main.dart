@@ -15,9 +15,9 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-    print('📩 Background message: ${message.notification?.title}');
+    print('Background message: ${message.notification?.title}');
   } catch (e) {
-    print('⚠️ Firebase background handler error: $e');
+    print('Firebase background handler error: $e');
   }
 }
 
@@ -37,11 +37,11 @@ void main() async {
       // Initialize notification service
       await NotificationService.initialize();
     } else {
-      print('ℹ️  Firebase skipped for web - using backend auth APIs');
+      print('Firebase skipped for web - using backend auth APIs');
     }
   } catch (e) {
-    print('⚠️ Firebase initialization error: $e');
-    print('ℹ️  Continuing without Firebase for this build');
+    print('Firebase initialization error: $e');
+    print('Continuing without Firebase for this build');
     // Continue without Firebase for web/testing
   }
   
@@ -92,10 +92,10 @@ class HomeScreen extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 // Logo/Title
-                const Icon(
-                  Icons.map,
-                  size: 100,
-                  color: Colors.white,
+                Image.asset(
+                  'assets/images/peakmap_logo.png',
+                  width: 120,
+                  height: 120,
                 ),
                 const SizedBox(height: 20),
                 const Text(
@@ -120,7 +120,7 @@ class HomeScreen extends StatelessWidget {
                 SizedBox(
                   width: 250,
                   height: 60,
-                  child: ElevatedButton.icon(
+                  child: ElevatedButton(
                     onPressed: () {
                       Navigator.push(
                         context,
@@ -131,8 +131,7 @@ class HomeScreen extends StatelessWidget {
                         ),
                       );
                     },
-                    icon: const Icon(Icons.local_shipping, size: 28),
-                    label: const Text(
+                    child: const Text(
                       'I\'m a Driver',
                       style: TextStyle(fontSize: 20),
                     ),
@@ -152,7 +151,7 @@ class HomeScreen extends StatelessWidget {
                 SizedBox(
                   width: 250,
                   height: 60,
-                  child: ElevatedButton.icon(
+                  child: ElevatedButton(
                     onPressed: () {
                       Navigator.push(
                         context,
@@ -163,8 +162,7 @@ class HomeScreen extends StatelessWidget {
                         ),
                       );
                     },
-                    icon: const Icon(Icons.person, size: 28),
-                    label: const Text(
+                    child: const Text(
                       'I\'m a Passenger',
                       style: TextStyle(fontSize: 20),
                     ),

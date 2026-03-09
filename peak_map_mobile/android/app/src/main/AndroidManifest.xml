@@ -2,7 +2,8 @@
     <application
         android:label="PEAK MAP"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true">
         
         <!-- Google Maps API Key -->
         <!-- TODO: Replace YOUR_GOOGLE_MAPS_API_KEY with your actual API key -->
