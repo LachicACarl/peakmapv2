@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+.venv312/
+venv/
+ENV/
+env/
+*.egg-info/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+peakmap.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Flutter
+peak_map_mobile/
+peak_map_mobile/**
+
+# Test files
+test_*.py
+*_test.py
+
+# Build outputs
+build/
+dist/
+*.log
+
+# Batch files
+*.bat
+
+# Documentation (optional, comment out if you want to include)
+*.md
+!README.md
+!VERCEL_DEPLOYMENT.md
+
+# Local config
+.env.local
+.env.development.local

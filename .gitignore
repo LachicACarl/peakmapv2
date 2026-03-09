@@ -26,6 +26,19 @@ venv/
 ENV/
 env/
 .venv
+.venv312/
+
+# Environment variables (DO NOT COMMIT!)
+.env
+.env.local
+.env.development.local
+.env.production.local
+peak-map-backend/.env
+
+# Keep example env files
+!.env.example
+!.env.vercel.example
+!.env.supabase
 
 # IDE
 .vscode/settings.json
@@ -37,15 +50,23 @@ env/
 .DS_Store
 Thumbs.db
 
-# Local database (regenerated on backend start)
+# Local database (DO NOT COMMIT - use Supabase in production)
+*.db
+*.sqlite
+*.sqlite3
+peakmap.db
 peak-map-backend/peakmap.db
 
 # Test results (regenerated on test run)
 peak-map-backend/e2e_button_results.json
 peak-map-backend/advanced_test_results.json
+eta_validation_reports/
 
 # Node/Flutter
 node_modules/
 .dart_tool/
 .packages
+
+# Vercel
+.vercel
 pubspec.lock

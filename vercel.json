@@ -1,0 +1,40 @@
+{
+  "version": 2,
+  "name": "peakmap-api",
+  "builds": [
+    {
+      "src": "peak-map-backend/api/index.py",
+      "use": "@vercel/python"
+    },
+    {
+      "src": "admin_dashboard.html",
+      "use": "@vercel/static"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/admin_dashboard.html",
+      "dest": "/admin_dashboard.html"
+    },
+    {
+      "src": "/card_tap_interface.html",
+      "dest": "/card_tap_interface.html"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "peak-map-backend/api/index.py"
+    }
+  ],
+  "env": {
+    "SUPABASE_URL": "@supabase_url",
+    "SUPABASE_ANON_KEY": "@supabase_anon_key",
+    "SUPABASE_SERVICE_ROLE_KEY": "@supabase_service_role_key",
+    "DATABASE_URL": "@database_url",
+    "FORCE_LOCAL_AUTH": "false"
+  },
+  "functions": {
+    "peak-map-backend/api/index.py": {
+      "maxDuration": 30
+    }
+  }
+}
