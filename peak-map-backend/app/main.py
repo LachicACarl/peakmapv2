@@ -1,5 +1,8 @@
-from fastapi import FastAPI
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from app.database import Base, engine
 from app.routes import alerts, admin, auth, drivers, eta, fares, gps, notifications, payments, rfid, ride_sessions, rides, stations, ws_gps
@@ -10,6 +13,9 @@ import app.models  # noqa: F401
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="PEAK MAP API")
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+ADMIN_DASHBOARD_FILE = PROJECT_ROOT / "admin_dashboard.html"
 
 # Configure CORS
 app.add_middleware(
@@ -49,6 +55,13 @@ app.include_router(rfid.router)
 app.include_router(ws_gps.router)  # WebSocket for real-time GPS updates
 app.include_router(admin.router)  # Admin dashboard endpoints
 app.include_router(notifications.router)  # Push notifications
+
+
+@app.get("/admin_dashboard.html", include_in_schema=False)
+def admin_dashboard_page():
+    if not ADMIN_DASHBOARD_FILE.exists():
+        raise HTTPException(status_code=404, detail="Not Found")
+    return FileResponse(ADMIN_DASHBOARD_FILE)
 
 
 @app.get("/")
