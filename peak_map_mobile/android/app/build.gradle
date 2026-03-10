@@ -34,7 +34,7 @@ android {
 
     defaultConfig {
         applicationId "com.example.peak_map_mobile"
-        minSdkVersion 21
+        minSdkVersion flutter.minSdkVersion
         targetSdkVersion flutter.targetSdkVersion
         versionCode 1
         versionName "1.0"
