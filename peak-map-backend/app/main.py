@@ -24,8 +24,11 @@ app.add_middleware(
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "null",  # Allow file:// protocol for local HTML files
+        # Production domains - UPDATE with your actual deployment URLs
+        "https://*.netlify.app",
+        "https://*.vercel.app",
     ],
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1)(:\d+)?$|https://.*\.(netlify|vercel)\.app$",
     allow_credentials=True,
     allow_methods=["*"],  # Allow all methods (GET, POST, PUT, DELETE, etc.)
     allow_headers=["*"],  # Allow all headers
@@ -51,3 +54,9 @@ app.include_router(notifications.router)  # Push notifications
 @app.get("/")
 def root():
     return {"status": "PEAK MAP backend running"}
+
+
+@app.get("/health")
+def health_check():
+    """Health check endpoint for deployment platforms (Render, Heroku, etc.)"""
+    return {"status": "healthy", "service": "PEAK MAP API"}

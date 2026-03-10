@@ -1,12 +1,111 @@
 # 🚀 PEAK MAP - Complete Deployment Guide
 
-**Last Updated:** March 9, 2026  
-**Target Platforms:** Docker, Heroku, AWS, DigitalOcean, VPS
+**Last Updated:** March 10, 2026  
+**Target Platforms:** Render.com + Netlify (FREE ⭐), Docker, Heroku, AWS, DigitalOcean, VPS
+
+---
+
+## 🆓 Quick Start: FREE Web Deployment (Recommended)
+
+**Cost:** $0/month | **Time:** 10 minutes | **No credit card required**
+
+### What You'll Deploy:
+- **Backend (FastAPI):** Render.com (750 hrs/month free)
+- **Frontend (Flutter Web):** Netlify (unlimited sites, 100GB bandwidth)
+- **Database:** Supabase (already set up, 500MB free)
+
+### Step 1: Deploy Backend to Render
+
+1. **Push your code to GitHub** (✅ already done)
+
+2. **Sign up at [render.com](https://render.com)** (free, no credit card)
+
+3. **Create Web Service:**
+   - Click **New** → **Web Service**
+   - Connect your GitHub account
+   - Select your `peakmapv2` repository
+   - Configure:
+     - **Name:** `peakmap-backend`
+     - **Root Directory:** `peak-map-backend`
+     - **Runtime:** Python 3
+     - **Build Command:** `pip install -r requirements.txt`
+     - **Start Command:** `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+     - **Plan:** Free
+
+4. **Add Environment Variables:**
+   ```
+   SUPABASE_URL = your_supabase_project_url
+   SUPABASE_KEY = your_supabase_anon_key
+   SUPABASE_SERVICE_KEY = your_supabase_service_role_key
+   ```
+   Get these from: [Supabase Dashboard](https://app.supabase.com/project/_/settings/api)
+
+5. **Deploy!** Wait 3-5 minutes. You'll get: `https://peakmap-backend.onrender.com`
+
+6. **Test it:**
+   ```powershell
+   curl https://peakmap-backend.onrender.com/health
+   # Should return: {"status":"healthy","service":"PEAK MAP API"}
+   ```
+
+### Step 2: Deploy Frontend to Netlify
+
+1. **Build Flutter web:**
+   ```powershell
+   cd C:\Users\User\Documents\peakmapv2\peak_map_mobile
+   & "C:\Users\User\flutter_clean\flutter\bin\flutter.bat" build web --release
+   ```
+
+2. **Sign up at [netlify.com](https://netlify.com)** (free)
+
+3. **Deploy:**
+   - Click **Add new site** → **Deploy manually**
+   - Drag the `build/web` folder onto the page
+   - Wait 30 seconds
+   - Done! You'll get: `https://random-name-123.netlify.app`
+
+4. **Optional: Customize URL:**
+   - Go to **Site settings** → **Domain management**
+   - Click **Change site name** → Enter `peakmap`
+   - Your URL becomes: `https://peakmap.netlify.app`
+
+### Step 3: Update CORS (IMPORTANT!)
+
+Once you have your Netlify URL, update the backend:
+
+1. Edit `peak-map-backend/app/main.py` line 26:
+   ```python
+   allow_origins=[
+       # ... existing localhost entries ...
+       "https://peakmap.netlify.app",  # ← Add your actual URL here
+   ],
+   ```
+
+2. Push changes:
+   ```powershell
+   git add .
+   git commit -m "Add production frontend URL to CORS"
+   git push origin main
+   ```
+
+Render will auto-deploy in 2-3 minutes.
+
+### ✅ You're Live!
+
+Open `https://peakmap.netlify.app` and test your app!
+
+### 📊 Free Tier Limits:
+- **Render:** 750 hrs/month (sleeps after 15 min idle, wakes in 30-60 sec)
+- **Netlify:** 100GB bandwidth, unlimited sites
+- **Supabase:** 500MB database, 1GB file storage
+
+**Good for:** Development + small production (up to ~1000 users/day)
 
 ---
 
 ## Table of Contents
 
+0. [FREE Deployment (Render + Netlify)](#-quick-start-free-web-deployment-recommended) ⭐ **See above**
 1. [Prerequisites](#1-prerequisites)
 2. [Local Docker Setup](#2-local-docker-setup)
 3. [Heroku Deployment](#3-heroku-deployment-easiest)
