@@ -6,7 +6,7 @@ import requests
 import json
 from datetime import datetime
 
-BASE_URL = "http://127.0.0.1:8000"
+BASE_URL = "http://127.0.0.1:8001"
 
 def print_header(text):
     print(f"\n{'='*60}")

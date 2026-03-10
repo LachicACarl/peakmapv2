@@ -1085,11 +1085,20 @@
     </div>
 
     <script>
+        // Auto-detect if running locally or on Vercel
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         const DASHBOARD_HOST = window.location.hostname || '127.0.0.1';
         const HTTP_SCHEME = window.location.protocol === 'https:' ? 'https' : 'http';
         const WS_SCHEME = window.location.protocol === 'https:' ? 'wss' : 'ws';
-        const API_BASE = `${HTTP_SCHEME}://${DASHBOARD_HOST}:8001`;
-        const WS_URL = `${WS_SCHEME}://${DASHBOARD_HOST}:8001/ws/admin`;
+        
+        // Use port 8001 for local, no port for Vercel
+        const API_BASE = isLocal 
+            ? `${HTTP_SCHEME}://${DASHBOARD_HOST}:8001`
+            : `${HTTP_SCHEME}://${DASHBOARD_HOST}`;
+        
+        const WS_URL = isLocal
+            ? `${WS_SCHEME}://${DASHBOARD_HOST}:8001/ws/admin`
+            : `${WS_SCHEME}://${DASHBOARD_HOST}/ws/admin`;
         
         let map;
         let driverMarkers = {};
