@@ -1,0 +1,6 @@
+# Copy this file to key.properties and replace placeholder values.
+# Do not commit key.properties to source control.
+storePassword=CHANGE_ME_STORE_PASSWORD
+keyPassword=CHANGE_ME_KEY_PASSWORD
+keyAlias=release
+storeFile=../keystore/release-keystore.jks
